@@ -1,4 +1,6 @@
-# Intelligal - Legal Document Intelligence Platform
+![Intelligal Banner](./banner.png)
+
+# IntelLegal - Legal Document Intelligence Platform
 
 ## 1. Problem and Constraints
 
