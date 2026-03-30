@@ -2,6 +2,116 @@
 
 # IntelLegal - Legal Document Intelligence Platform
 
+## Local Development (Make)
+
+Use the `Makefile` targets for local stack lifecycle and tests.
+
+### Prerequisites
+- Docker + Docker Compose
+- GNU Make
+- `python3` (for Python test target)
+- `go` (for Go test target)
+- `bun` or `npm` (for frontend test target)
+
+### 1. Initialize local environment
+```bash
+make init
+```
+
+This creates `.env` from `.env.example` (if missing) and prepares local sample storage.
+
+### 2. Start the full stack
+```bash
+make up
+```
+
+Useful follow-up commands:
+```bash
+make ps
+make logs
+```
+
+Default local endpoints:
+- Frontend: `http://localhost:3000`
+- Go API: `http://localhost:8080`
+- Python AI API: `http://localhost:8000`
+- PostgreSQL: `localhost:5432`
+- Qdrant: `http://localhost:6333`
+- Redis: `localhost:6379`
+
+### 3. Run database migrations
+```bash
+make migrate-up
+```
+
+Optional helpers:
+```bash
+make migrate-version
+make migrate-down
+```
+
+### 4. Run tests
+Run all suites:
+```bash
+make test
+```
+
+Run individual suites:
+```bash
+make test-go
+make test-py
+make test-fe
+```
+
+### 5. Stop or clean stack
+```bash
+make down    # stop containers
+make clean   # stop and remove volumes
+```
+
+## API Reference (Quick)
+
+Legend: 🟢 `GET` | 🔵 `POST` | 🟣 `PUT` | 🟠 `PATCH` | 🔴 `DELETE`
+
+Full contracts:
+- Public API OpenAPI: [`docs/contracts/public-api.openapi.yaml`](./docs/contracts/public-api.openapi.yaml)
+- Internal AI API OpenAPI: [`docs/contracts/internal-api.openapi.yaml`](./docs/contracts/internal-api.openapi.yaml)
+
+<details>
+<summary><strong>Go Main API (Public) - <code>http://localhost:8080</code></strong></summary>
+
+Authentication:
+- Public API follows the contract in `docs/contracts/public-api.openapi.yaml` (bearer auth scheme).
+
+Endpoints:
+- 🟢 `GET /api/v1/health` - Liveness check.
+- 🟢 `GET /api/v1/readiness` - Readiness/dependency check.
+- 🔵 `POST /api/v1/documents` - Create document ingest job.
+- 🟢 `GET /api/v1/documents` - List documents (supports filters/pagination).
+- 🟢 `GET /api/v1/documents/{document_id}` - Get one document.
+- 🔵 `POST /api/v1/checks/clause-presence` - Start missing-clause check.
+- 🔵 `POST /api/v1/checks/company-name` - Start company-name check.
+- 🟢 `GET /api/v1/checks/{check_id}` - Get check run status.
+- 🟢 `GET /api/v1/checks/{check_id}/results` - Get check results with evidence.
+
+</details>
+
+<details>
+<summary><strong>Python AI API (Internal) - <code>http://localhost:8000</code></strong></summary>
+
+Authentication:
+- Internal endpoints (except health) require internal service auth token (`INTERNAL_SERVICE_TOKEN`).
+
+Endpoints:
+- 🟢 `GET /internal/v1/health` - Service and config health.
+- 🟢 `GET /internal/v1/bootstrap/auth-check` - Validate internal auth wiring.
+- 🔵 `POST /internal/v1/extract` - Extract text/OCR from source.
+- 🔵 `POST /internal/v1/index` - Chunk/embed/index into Qdrant.
+- 🔵 `POST /internal/v1/analyze/clause` - Analyze required clause presence.
+- 🔵 `POST /internal/v1/analyze/company-name` - Analyze old/new company name usage.
+
+</details>
+
 ## 1. Problem and Constraints
 
 ### Problem
