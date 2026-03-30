@@ -82,7 +82,8 @@ describe("ApiClient", () => {
     ).rejects.toEqual(expect.any(ApiError));
   });
 
-  it("calls fetch with global receiver to avoid illegal invocation", async () => {
+  it("uses global fetch path by default to avoid illegal invocation", async () => {
+    const originalFetch = globalThis.fetch;
     const fetchFn = vi.fn(async function (this: unknown) {
       expect(this).toBe(globalThis);
       return new Response(
@@ -96,8 +97,13 @@ describe("ApiClient", () => {
       );
     });
 
-    const client = new ApiClient("http://localhost:8080", fetchFn as unknown as typeof fetch);
-    await client.listDocuments();
+    try {
+      globalThis.fetch = fetchFn as unknown as typeof fetch;
+      const client = new ApiClient("http://localhost:8080");
+      await client.listDocuments();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
 
     expect(fetchFn).toHaveBeenCalledOnce();
   });

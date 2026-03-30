@@ -2,74 +2,7 @@
 
 # IntelLegal - Legal Document Intelligence Platform
 
-## Local Development (Make)
-
-Use the `Makefile` targets for local stack lifecycle and tests.
-
-### Prerequisites
-- Docker + Docker Compose
-- GNU Make
-- `python3` (for Python test target)
-- `go` (for Go test target)
-- `bun` or `npm` (for frontend test target)
-
-### 1. Initialize local environment
-```bash
-make init
-```
-
-This creates `.env` from `.env.example` (if missing) and prepares local sample storage.
-
-### 2. Start the full stack
-```bash
-make up
-```
-
-Useful follow-up commands:
-```bash
-make ps
-make logs
-```
-
-Default local endpoints:
-- Frontend: `http://localhost:3000`
-- Go API: `http://localhost:8080`
-- Python AI API: `http://localhost:8000`
-- PostgreSQL: `localhost:5432`
-- Qdrant: `http://localhost:6333`
-- Redis: `localhost:6379`
-
-### 3. Run database migrations
-```bash
-make migrate-up
-```
-
-Optional helpers:
-```bash
-make migrate-version
-make migrate-down
-```
-
-### 4. Run tests
-Run all suites:
-```bash
-make test
-```
-
-Run individual suites:
-```bash
-make test-go
-make test-py
-make test-fe
-```
-
-### 5. Stop or clean stack
-```bash
-make down    # stop containers
-make clean   # stop and remove volumes
-```
-
-## API Reference (Quick)
+## 📚 API Reference (Quick)
 
 Legend: 🟢 `GET` | 🔵 `POST` | 🟣 `PUT` | 🟠 `PATCH` | 🔴 `DELETE`
 
@@ -112,7 +45,7 @@ Endpoints:
 
 </details>
 
-## 1. Problem and Constraints
+## 1. 🎯 Problem and Constraints
 
 ### Problem
 Legal teams spend significant time on repetitive contract review tasks:
@@ -135,14 +68,14 @@ This process is currently semi-manual, slow, and hard to scale.
 
 ---
 
-## 2. Product Use Cases, User Stories, and Features
+## 2. 🧩 Product Use Cases, User Stories, and Features
 
-### Personas
+### 👥 Personas
 - Legal Reviewer: validates contract compliance and wording updates.
 - Legal Operations Lead: tracks review throughput, quality, and backlog.
 - Platform Engineer: operates ingestion/indexing and integrations.
 
-### Primary Use Cases
+### 📌 Primary Use Cases
 1. Missing Clause Detection
 - Find all contracts that do not contain a required legal clause.
 
@@ -155,14 +88,14 @@ This process is currently semi-manual, slow, and hard to scale.
 4. Audit and Traceability
 - Inspect who ran a check, when, and what evidence supported the result.
 
-### User Stories (MVP)
+### 📝 User Stories (MVP)
 1. As a Legal Reviewer, I upload/select contracts and run a "missing clause" check so I can prioritize remediation quickly.
 2. As a Legal Reviewer, I run an "old company name" check so I can produce an actionable list for updates.
 3. As a Legal Reviewer, I open result details and see source snippet + page so I can trust and verify findings.
 4. As a Legal Operations Lead, I view run history and status so I can report progress and bottlenecks.
 5. As a Platform Engineer, I inspect pipeline failures (OCR/indexing/API) so I can resolve issues fast.
 
-### Feature List (MVP)
+### ✨ Feature List (MVP)
 - Document ingest (PDF/JPEG)
 - OCR + text extraction pipeline
 - Clause-presence checks
@@ -172,16 +105,16 @@ This process is currently semi-manual, slow, and hard to scale.
 - External REST API copy storage + status
 - Basic audit logging
 
-### Non-MVP (Phase 2)
+### 🔭 Non-MVP (Phase 2)
 - GraphRAG for relationship-heavy multi-hop legal reasoning
 - Full production SharePoint sync and governance policies
 - Multi-language legal interpretation enhancements
 
 ---
 
-## 3. UI Hierarchy (Information Architecture)
+## 3. 🧭 UI Hierarchy (Information Architecture)
 
-### Top-Level Navigation
+### 🧱 Top-Level Navigation
 1. Dashboard
 2. Contracts
 3. Checks
@@ -189,7 +122,7 @@ This process is currently semi-manual, slow, and hard to scale.
 5. Audit Log
 6. Settings
 
-### Page Hierarchy
+### 🗂️ Page Hierarchy
 1. Dashboard
 - KPI cards (contracts ingested, checks run, flagged contracts)
 - Recent runs
@@ -221,7 +154,7 @@ This process is currently semi-manual, slow, and hard to scale.
 - API endpoints/config health
 - Model/provider toggles (if needed for demo)
 
-### Key UI Components
+### 🧩 Key UI Components
 - `ContractTable`
 - `UploadDropzone`
 - `CheckBuilderForm`
@@ -232,44 +165,64 @@ This process is currently semi-manual, slow, and hard to scale.
 
 ---
 
-## 4. Proposed Architecture
+## 4. 🏗️ Architecture
 
-### FE/BE Service Architecture
+### 🔌 FE/BE Service Architecture
 ```mermaid
 flowchart LR
-    U[Legal User] --> FE[React + TypeScript Frontend]
-    FE --> GO[Go Main API (Public)]
+    U["👤 Legal User"] --> FE["🖥️ frontend (React SPA via Nginx)<br/>ports: 80 (container), 3000 (host)"]
+    FE --> GO["⚙️ go-api (Go net/http REST API)<br/>ports: 8080 (container/host)"]
 
-    GO --> ING[Ingestion Service]
-    GO --> AUD[Audit Service]
-    GO --> PAI[Python AI Pipeline API (Internal)]
+    GO --> ING["📥 go-api ingestion module<br/>port: 8080"]
+    GO --> AUD["🧾 go-api audit module<br/>port: 8080"]
+    GO --> PAI["🤖 py-ai-api (FastAPI internal API)<br/>ports: 8000 (container/host)"]
 
-    PAI --> EXT[Extraction/OCR Worker]
-    PAI --> IDX[Indexing/Embedding Worker]
+    PAI --> EXT["🔎 extraction/OCR pipeline (Python worker)<br/>port: 8000"]
+    PAI --> IDX["🧠 indexing/embedding pipeline (Python worker)<br/>port: 8000"]
 
-    IDX --> VDB[(Qdrant Vector DB)]
-    GO --> RDB[(PostgreSQL)]
-    ING --> OBJ[(Blob/File Storage)]
+    IDX --> VDB[("📚 qdrant (vector database)<br/>ports: 6333 HTTP, 6334 gRPC")]
+    GO --> RDB[("🗄️ postgres (transactional database)<br/>port: 5432")]
+    ING --> OBJ[("🗃️ object storage (local samples volume)<br/>n/a")]
 
-    PAI --> LLM[LLM Provider\nAzure AI Foundry (primary)]
+    PAI --> LLM["☁️ LLM provider (Azure AI Foundry)<br/>external endpoint"]
     PAI --> VDB
     PAI --> RDB
 
-    GO --> COPY[Contract Copy REST API]
+    GO --> COPY["📦 external contract-copy REST API<br/>external endpoint"]
     AUD --> RDB
+
+    classDef user fill:#0F2A43,stroke:#64B5F6,color:#E3F2FD,stroke-width:1px;
+    classDef frontend fill:#123524,stroke:#81C784,color:#E8F5E9,stroke-width:1px;
+    classDef api fill:#4A2C00,stroke:#FFB74D,color:#FFF3E0,stroke-width:1px;
+    classDef worker fill:#3B1A4A,stroke:#CE93D8,color:#F3E5F5,stroke-width:1px;
+    classDef data fill:#263238,stroke:#90A4AE,color:#ECEFF1,stroke-width:1px;
+    classDef external fill:#4E1C10,stroke:#FF8A65,color:#FBE9E7,stroke-width:1px;
+
+    class U user;
+    class FE frontend;
+    class GO,ING,AUD api;
+    class PAI,EXT,IDX worker;
+    class VDB,RDB,OBJ data;
+    class LLM,COPY external;
 ```
 
-### Runtime View (Request Flow)
+### 🔄 Runtime View (Request Flow)
 ```mermaid
 sequenceDiagram
-    participant User as Legal User
-    participant UI as React UI
-    participant API as Go Main API
-    participant AI as Python AI API
-    participant X as OCR/Extract Worker
-    participant Q as Qdrant
-    participant DB as PostgreSQL
-    participant C as Copy Storage API
+    box rgb(21,41,32) "👥 Client Layer"
+        actor User as "👤 Legal User"
+        participant UI as "🖥️ frontend :3000"
+    end
+    box rgb(56,38,17) "⚙️ Application Layer"
+        participant API as "⚙️ go-api :8080"
+        participant AI as "🤖 py-ai-api :8000"
+        participant X as "🔎 extraction/index workers"
+    end
+    box rgb(33,43,51) "🗄️ Data & External Layer"
+        participant Q as "📚 qdrant :6333/:6334"
+        participant DB as "🗄️ postgres :5432"
+        participant C as "📦 external copy API"
+    end
 
     User->>UI: Upload contracts / run check
     UI->>API: POST /documents or POST /checks/*
@@ -283,7 +236,7 @@ sequenceDiagram
     API-->>UI: Return results with confidence/evidence
 ```
 
-### Why This Architecture
+### 🤔 Why This Architecture
 - Keeps UI simple and task-focused for legal users.
 - Moves heavy OCR/RAG workloads into a dedicated internal service.
 - Supports transparent evidence-based AI outputs.
@@ -291,9 +244,78 @@ sequenceDiagram
 
 ---
 
-## 5. Stack Decision (Best-of-Breed vs Microsoft)
+## 🛠️ Local Development (Make)
 
-### Recommended MVP Stack
+Use the `Makefile` targets for local stack lifecycle and tests.
+
+### 📦 Prerequisites
+- Docker + Docker Compose
+- GNU Make
+- `python3` (for Python test target)
+- `go` (for Go test target)
+- `bun` or `npm` (for frontend test target)
+
+### 1. ⚙️ Initialize local environment
+```bash
+make init
+```
+
+This creates `.env` from `.env.example` (if missing) and prepares local sample storage.
+
+### 2. 🚀 Start the full stack
+```bash
+make up
+```
+
+Useful follow-up commands:
+```bash
+make ps
+make logs
+```
+
+Default local endpoints:
+- Frontend: `http://localhost:3000`
+- Go API: `http://localhost:8080`
+- Python AI API: `http://localhost:8000`
+- PostgreSQL: `localhost:5432`
+- Qdrant: `http://localhost:6333`
+- Redis: `localhost:6379`
+
+### 3. 🗄️ Run database migrations
+```bash
+make migrate-up
+```
+
+Optional helpers:
+```bash
+make migrate-version
+make migrate-down
+```
+
+### 4. ✅ Run tests
+Run all suites:
+```bash
+make test
+```
+
+Run individual suites:
+```bash
+make test-go
+make test-py
+make test-fe
+```
+
+### 5. 🧹 Stop or clean stack
+```bash
+make down    # stop containers
+make clean   # stop and remove volumes
+```
+
+---
+
+## 5. ⚖️ Stack Decision (Best-of-Breed vs Microsoft)
+
+### ✅ MVP Stack
 - Frontend: React, TypeScript
 - Main API: Go
 - AI Pipeline API: Python, FastAPI, Pydantic
@@ -303,7 +325,7 @@ sequenceDiagram
 - Deployment: Docker Compose (local), Azure-ready containers
 - IaC: Terraform
 
-### Evaluation Framing for Interview
+### 🧪 Evaluation Framing for Interview
 - Primary target: Azure-centric deployment and operations
 - Model providers:
   - Preferred enterprise path: Azure AI Foundry
@@ -316,7 +338,7 @@ sequenceDiagram
 
 ---
 
-## 6. End-to-End Flow
+## 6. 🔁 End-to-End Flow
 
 1. User uploads/contracts are loaded for analysis.
 2. Go API stores original files and records metadata.
@@ -336,9 +358,9 @@ sequenceDiagram
 
 ---
 
-## 7. DB Storage Plan
+## 7. 🗃️ DB Storage
 
-### Storage Components
+### 🧱 Storage Components
 1. PostgreSQL (system of record)
 - Contracts metadata
 - Processing status
@@ -354,7 +376,86 @@ sequenceDiagram
 - Original uploaded files
 - Optional extracted text artifacts (for debugging)
 
-### Proposed Relational Schema (MVP)
+### 🧬 Relational Schema (MVP)
+
+```mermaid
+erDiagram
+    DOCUMENTS {
+        uuid id PK
+        string source_type
+        string source_ref
+        string filename
+        string mime_type
+        string storage_uri
+        bool ocr_required
+        string status
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    DOCUMENT_VERSIONS {
+        uuid id PK
+        uuid document_id FK
+        string version_label
+        string checksum
+        timestamp created_at
+    }
+
+    CHECK_RUNS {
+        uuid id PK
+        string check_type
+        jsonb input_payload
+        string requested_by
+        string status
+        timestamp started_at
+        timestamp finished_at
+    }
+
+    CHECK_RESULTS {
+        uuid id PK
+        uuid check_run_id FK
+        uuid document_id FK
+        string outcome
+        numeric confidence
+        string summary
+        timestamp created_at
+    }
+
+    EVIDENCE_SNIPPETS {
+        uuid id PK
+        uuid check_result_id FK
+        string chunk_id
+        int page_number
+        string snippet_text
+        numeric score
+    }
+
+    AUDIT_EVENTS {
+        uuid id PK
+        string event_type
+        string entity_type
+        uuid entity_id
+        jsonb payload
+        timestamp created_at
+    }
+
+    EXTERNAL_COPY_EVENTS {
+        uuid id PK
+        uuid document_id FK
+        string endpoint
+        string request_id
+        int status_code
+        string status
+        timestamp created_at
+    }
+
+    DOCUMENTS ||--o{ DOCUMENT_VERSIONS : has_versions
+    DOCUMENTS ||--o{ CHECK_RESULTS : appears_in
+    DOCUMENTS ||--o{ EXTERNAL_COPY_EVENTS : copied_to_external
+    CHECK_RUNS ||--o{ CHECK_RESULTS : produces
+    CHECK_RESULTS ||--o{ EVIDENCE_SNIPPETS : supports
+```
+
 - `documents`
   - `id (uuid, pk)`
   - `source_type` (sharepoint_upload/manual)
@@ -415,7 +516,7 @@ sequenceDiagram
   - `status` (success/failed)
   - `created_at`
 
-### Data Lifecycle
+### ♻️ Data Lifecycle
 - Raw file retained in blob storage.
 - Extracted chunks indexed in Qdrant; source of truth remains PostgreSQL + blob.
 - Re-indexing is supported using `document_versions.checksum` and idempotent upsert.
@@ -423,7 +524,7 @@ sequenceDiagram
 
 ---
 
-## 8. Security and Compliance Baseline
+## 8. 🔐 Security and Compliance Baseline
 
 - Secret management via env/secret manager; no hardcoded credentials
 - Access control baseline (legal-user role model)
@@ -434,19 +535,19 @@ sequenceDiagram
 
 ---
 
-## 9. Adoption Plan
+## 9. 📈 Adoption
 
-### Rollout Approach
+### 🚚 Rollout Approach
 1. Pilot with one clause family and one legal team subset.
 2. Measure precision/recall and manual time saved.
 3. Expand to additional templates and entity checks.
 
-### Enablement
+### 🎓 Enablement
 - 30-minute onboarding and quick reference guide
 - Evidence-first UX to improve trust
 - Feedback loop for incorrect/uncertain outputs
 
-### Value Metrics
+### 📊 Value Metrics
 - Review time per contract batch
 - Percentage of checks automated
 - False positive/false negative rate trend
@@ -454,7 +555,7 @@ sequenceDiagram
 
 ---
 
-## 10. Risks and Mitigations
+## 10. ⚠️ Risks and Mitigations
 
 1. OCR quality on poor scans
 - Mitigation: preprocessing, confidence thresholds, manual review fallback
@@ -470,32 +571,3 @@ sequenceDiagram
 
 5. Scope creep during MVP
 - Mitigation: strict MVP boundaries and prioritized backlog
-
----
-
-## 11. Implementation Tasks (MVP)
-
-### Phase 1 - Foundation
-- [ ] Initialize repository structure (`frontend/`, `go-api/`, `py-ai-api/`, `infra/`, `samples/`)
-- [ ] Add Docker Compose for local full-stack run
-- [ ] Add configuration templates (`.env.example`)
-- [x] Add DB migrations skeleton
-
-### Phase 2 - Backend and Pipeline
-- [ ] Build Go API skeleton and core public endpoints
-- [ ] Build Python internal AI API skeleton
-- [ ] Implement PDF extraction + JPEG OCR pipeline
-- [ ] Add chunking, embeddings, and Qdrant indexing
-- [ ] Implement clause and company-name checks
-- [ ] Persist check runs/results/evidence in PostgreSQL
-
-### Phase 3 - Frontend and UX
-- [ ] Build Dashboard, Contracts, Checks, Results pages
-- [ ] Build check wizard and results detail panel
-- [ ] Show evidence snippets + confidence + run history
-
-### Phase 4 - Integration and Readiness
-- [ ] Implement external REST storage API client
-- [ ] Add audit logging and security baseline
-- [ ] Add tests and sample dataset
-- [ ] Prepare interview demo script + architecture slides

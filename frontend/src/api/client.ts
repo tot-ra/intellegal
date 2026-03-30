@@ -116,11 +116,25 @@ export class ApiClient {
   private readonly baseUrl: string;
   private readonly fetchFn: FetchLike;
 
-  constructor(baseUrl = appConfig.apiBaseUrl, fetchFn: FetchLike = fetch) {
+  constructor(baseUrl = appConfig.apiBaseUrl, fetchFn?: FetchLike) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
-    // Preserve a stable global receiver for native fetch implementations.
-    this.fetchFn = ((input: RequestInfo | URL, init?: RequestInit) =>
-      Reflect.apply(fetchFn, globalThis, [input, init])) as FetchLike;
+
+    // Use the native global fetch call path by default so browser receiver semantics stay intact.
+    if (fetchFn === undefined || fetchFn === globalThis.fetch) {
+      this.fetchFn = ((input: RequestInfo | URL, init?: RequestInit) =>
+        globalThis.fetch(input, init)) as FetchLike;
+      return;
+    }
+
+    // Custom fetch implementations are treated as plain functions.
+    this.fetchFn = fetchFn;
+  }
+
+  private invokeFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    const receiver =
+      typeof window !== "undefined" && typeof window.fetch === "function" ? window : globalThis;
+
+    return Reflect.apply(this.fetchFn, receiver, [input, init]) as Promise<Response>;
   }
 
   createDocument(body: CreateDocumentRequest, options?: RequestOptions) {
@@ -194,12 +208,34 @@ export class ApiClient {
       headers["Content-Type"] = "application/json";
     }
 
-    const response = await this.fetchFn(`${this.baseUrl}${path}`, {
+    const requestUrl = `${this.baseUrl}${path}`;
+    const requestInit: RequestInit = {
       method,
       headers,
       signal: options?.signal,
       body: body === undefined ? undefined : JSON.stringify(body)
-    });
+    };
+
+    let response: Response;
+    try {
+      response = await this.invokeFetch(requestUrl, requestInit);
+    } catch (error) {
+      const fallbackReceiver =
+        typeof window !== "undefined" && typeof window.fetch === "function" ? window : globalThis;
+
+      if (
+        error instanceof TypeError &&
+        /illegal invocation/i.test(error.message) &&
+        typeof fallbackReceiver.fetch === "function"
+      ) {
+        response = (await Reflect.apply(fallbackReceiver.fetch, fallbackReceiver, [
+          requestUrl,
+          requestInit
+        ])) as Response;
+      } else {
+        throw error;
+      }
+    }
 
     if (!response.ok) {
       const payload = (await response.json()) as ErrorEnvelope;

@@ -19,27 +19,24 @@ export function AppShell() {
     <div className="app-shell">
       <header className="app-header">
         <div className="brand">
-          <div className="logo" aria-hidden="true">
-            <span className="logo-dot" />
-            <span className="logo-smile" />
-          </div>
-          <div>
-            <p className="brand-kicker">Riverty Sandbox</p>
+          <img className="logo" src="/logo.webp" alt="IntelLegal logo" />
+          <div className="brand-content">
+            <p className="brand-kicker">IntelLegal</p>
             <h1>Legal Document Intelligence</h1>
+            <nav className="nav" aria-label="Primary">
+              {navItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  className={({ isActive }) => (isActive ? "active" : undefined)}
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+            </nav>
           </div>
         </div>
-        <nav className="nav" aria-label="Primary">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) => (isActive ? "active" : undefined)}
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
       </header>
       <main className="app-main">
         <Outlet />
