@@ -41,6 +41,10 @@ func (s *searchCapturingAIClient) AnalyzeCompanyName(context.Context, ai.Analyze
 	return ai.AnalysisResult{}, nil
 }
 
+func (s *searchCapturingAIClient) AnalyzeLLMReview(context.Context, ai.AnalyzeLLMReviewRequest) (ai.AnalysisResult, error) {
+	return ai.AnalysisResult{}, nil
+}
+
 func (s *searchCapturingAIClient) Extract(context.Context, ai.ExtractRequest) (ai.ExtractResult, error) {
 	return ai.ExtractResult{}, nil
 }

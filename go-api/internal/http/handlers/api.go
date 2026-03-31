@@ -33,6 +33,7 @@ const (
 	checkStatusFailed        = "failed"
 	checkTypeClause          = "clause_presence"
 	checkTypeCompany         = "company_name"
+	checkTypeLLMReview       = "llm_review"
 )
 
 var (
@@ -46,6 +47,7 @@ var (
 type aiClient interface {
 	AnalyzeClause(ctx context.Context, req ai.AnalyzeClauseRequest) (ai.AnalysisResult, error)
 	AnalyzeCompanyName(ctx context.Context, req ai.AnalyzeCompanyNameRequest) (ai.AnalysisResult, error)
+	AnalyzeLLMReview(ctx context.Context, req ai.AnalyzeLLMReviewRequest) (ai.AnalysisResult, error)
 	Extract(ctx context.Context, req ai.ExtractRequest) (ai.ExtractResult, error)
 	Index(ctx context.Context, req ai.IndexRequest) (ai.IndexResult, error)
 	SearchSections(ctx context.Context, req ai.SearchSectionsRequest) (ai.SearchSectionsResult, error)
@@ -69,6 +71,10 @@ func (noopAIClient) AnalyzeClause(context.Context, ai.AnalyzeClauseRequest) (ai.
 }
 
 func (noopAIClient) AnalyzeCompanyName(context.Context, ai.AnalyzeCompanyNameRequest) (ai.AnalysisResult, error) {
+	return ai.AnalysisResult{}, nil
+}
+
+func (noopAIClient) AnalyzeLLMReview(context.Context, ai.AnalyzeLLMReviewRequest) (ai.AnalysisResult, error) {
 	return ai.AnalysisResult{}, nil
 }
 
@@ -288,6 +294,11 @@ type companyNameCheckRequest struct {
 	DocumentIDs    []string `json:"document_ids,omitempty"`
 	OldCompanyName string   `json:"old_company_name"`
 	NewCompanyName string   `json:"new_company_name,omitempty"`
+}
+
+type llmReviewCheckRequest struct {
+	DocumentIDs  []string `json:"document_ids,omitempty"`
+	Instructions string   `json:"instructions"`
 }
 
 type checkAcceptedResponse struct {

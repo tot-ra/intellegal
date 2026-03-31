@@ -1,18 +1,12 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  addAuditEvent,
   listStoredGuidelineRules,
-  setStoredResults,
-  upsertStoredRun,
   type StoredGuidelineRule
 } from "../app/localState";
-import { apiClient, type CheckResultItem, type DocumentResponse } from "../api/client";
-import {
-  describeGuidelineRule,
-  matchesKeywordTerm,
-  normalizeGuidelineRule
-} from "../app/guidelineRules";
+import { apiClient, type DocumentResponse } from "../api/client";
+import { describeGuidelineRule } from "../app/guidelineRules";
+import { runGuidelineRule } from "../app/guidelineRunFlow";
 
 type Scope = "all" | "selected";
 
@@ -103,112 +97,17 @@ export function GuidelineRunPage() {
 
     try {
       const documentIds = scope === "selected" ? selectedIds : undefined;
-      const normalizedRule = normalizeGuidelineRule(selectedRule);
+      const targetDocumentIds = documentIds ?? (documents.length > 0
+        ? documents.map((document) => document.id)
+        : (await apiClient.listDocuments({ limit: 200, offset: 0 })).items.map((document) => document.id));
+      const { checkId } = await runGuidelineRule({
+        rule: selectedRule,
+        documentIds: targetDocumentIds,
+        documents: documents.length > 0 ? documents : undefined,
+        scope
+      });
 
-      if (normalizedRule.rule_type === "keyword_match") {
-        const allDocuments =
-          documents.length > 0 ? documents : (await apiClient.listDocuments({ limit: 200, offset: 0 })).items;
-        const targetDocuments =
-          scope === "selected" ? allDocuments.filter((document) => selectedIds.includes(document.id)) : allDocuments;
-        const resultItems: CheckResultItem[] = await Promise.all(
-          targetDocuments.map(async (document) => {
-            const response = await apiClient.getDocumentText(document.id);
-            const missingTerms = normalizedRule.required_terms.filter((term) => !matchesKeywordTerm(response.text, term));
-            const forbiddenMatches = normalizedRule.forbidden_terms.filter((term) =>
-              matchesKeywordTerm(response.text, term)
-            );
-            const passed = missingTerms.length === 0 && forbiddenMatches.length === 0;
-            const summaryParts: string[] = [];
-
-            if (missingTerms.length > 0) {
-              summaryParts.push(`Missing: ${missingTerms.join(", ")}`);
-            }
-            if (forbiddenMatches.length > 0) {
-              summaryParts.push(`Forbidden matches: ${forbiddenMatches.join(", ")}`);
-            }
-            if (summaryParts.length === 0) {
-              summaryParts.push("All strict keyword checks passed.");
-            }
-
-            return {
-              document_id: document.id,
-              outcome: passed ? "match" : "missing",
-              confidence: 1,
-              summary: summaryParts.join(". "),
-              evidence: []
-            } satisfies CheckResultItem;
-          })
-        );
-
-        const checkId = `local-keyword-${Date.now()}`;
-        const requestedAt = new Date().toISOString();
-
-        upsertStoredRun({
-          check_id: checkId,
-          check_type: "clause_presence",
-          execution_mode: "local",
-          status: "completed",
-          requested_at: requestedAt,
-          finished_at: requestedAt,
-          rule_id: normalizedRule.id,
-          rule_name: normalizedRule.name,
-          rule_type: normalizedRule.rule_type,
-          rule_text: describeGuidelineRule(normalizedRule)
-        });
-        addAuditEvent({
-          type: "check.started",
-          message: `Started guideline "${normalizedRule.name}"`,
-          metadata: {
-            check_id: checkId,
-            scope,
-            document_count: String(targetDocuments.length),
-            rule_name: normalizedRule.name
-          }
-        });
-
-        setStoredResults({
-          check_id: checkId,
-          status: "completed",
-          items: resultItems,
-          updated_at: requestedAt
-        });
-
-        navigate(`/guidelines?checkId=${encodeURIComponent(checkId)}`);
-      } else {
-        const idempotencyKey = globalThis.crypto?.randomUUID?.() ?? `check-${Date.now()}`;
-        const response = await apiClient.startClausePresenceCheck(
-          {
-            document_ids: documentIds,
-            required_clause_text: normalizedRule.instructions
-          },
-          { idempotencyKey }
-        );
-
-        upsertStoredRun({
-          check_id: response.check_id,
-          check_type: response.check_type,
-          execution_mode: "remote",
-          status: response.status,
-          requested_at: new Date().toISOString(),
-          rule_id: normalizedRule.id,
-          rule_name: normalizedRule.name,
-          rule_type: normalizedRule.rule_type,
-          rule_text: describeGuidelineRule(normalizedRule)
-        });
-
-        addAuditEvent({
-          type: "check.started",
-          message: `Started guideline "${normalizedRule.name}"`,
-          metadata: {
-            check_id: response.check_id,
-            scope,
-            document_count: String(documentIds?.length ?? documents.length),
-            rule_name: normalizedRule.name
-          }
-        });
-
-        navigate(`/guidelines?checkId=${encodeURIComponent(response.check_id)}`);
-      }
+      navigate(`/guidelines?checkId=${encodeURIComponent(checkId)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start guideline.");
     } finally {

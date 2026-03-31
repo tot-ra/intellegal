@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     qdrant_startup_check_enabled: bool = True
     index_chunk_size: int = 800
     index_chunk_overlap: int = 120
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_timeout_seconds: float = 30.0
 
     @model_validator(mode="after")
     def ensure_database_sslmode(self) -> "Settings":

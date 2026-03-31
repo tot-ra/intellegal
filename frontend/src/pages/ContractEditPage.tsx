@@ -8,7 +8,19 @@ import {
   type DocumentTextResponse
 } from "../api/client";
 import { formatEuropeanDateTime } from "../app/datetime";
-import { readLocalJson, writeLocalJson } from "../app/localState";
+import {
+  getStoredGuidelineRule,
+  getStoredResults,
+  listPendingAutoGuidelineRuns,
+  listStoredRuns,
+  removePendingAutoGuidelineRun,
+  setStoredResults,
+  upsertStoredRun,
+  writeLocalJson,
+  readLocalJson,
+  type StoredCheckRun
+} from "../app/localState";
+import { formatGuidelineRunStatusEmoji, runGuidelineRule } from "../app/guidelineRunFlow";
 
 const CONTRACT_TEXT_SETTINGS_KEY = "ldi.contractTextSettings";
 const DEFAULT_TEXT_FONT_SIZE = 1.12;
@@ -67,6 +79,10 @@ export function ContractEditPage() {
   const [textLoading, setTextLoading] = useState(false);
   const [documentTexts, setDocumentTexts] = useState<Record<string, DocumentTextResponse>>({});
   const [textError, setTextError] = useState<string | null>(null);
+  const [pendingAutoRuns, setPendingAutoRuns] = useState(() => (contractId ? listPendingAutoGuidelineRuns(contractId) : []));
+  const [guidelineRuns, setGuidelineRuns] = useState<StoredCheckRun[]>([]);
+  const [guidelineError, setGuidelineError] = useState<string | null>(null);
+  const [startingAutoGuidelines, setStartingAutoGuidelines] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<ContractDisplayMode>("text");
@@ -117,6 +133,12 @@ export function ContractEditPage() {
       lineHeight: textLineHeight
     });
   }, [textFontSize, textLineHeight]);
+
+  const contractDocumentIds = useMemo(() => files.map((file) => file.id), [files]);
+
+  useEffect(() => {
+    setPendingAutoRuns(contractId ? listPendingAutoGuidelineRuns(contractId) : []);
+  }, [contractId, files.length, contract?.updated_at]);
 
   useEffect(() => {
     let cancelled = false;
@@ -178,6 +200,127 @@ export function ContractEditPage() {
       window.clearInterval(timer);
     };
   }, [statusSummary.processing, statusSummary.ingested, contractId]);
+
+  useEffect(() => {
+    const relevantRuns = listStoredRuns().filter((run) =>
+      (run.document_ids ?? []).some((documentId) => contractDocumentIds.includes(documentId))
+    );
+    setGuidelineRuns(relevantRuns);
+  }, [contractDocumentIds, contract?.updated_at, files.length]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const refreshRuns = async () => {
+      if (contractDocumentIds.length === 0) {
+        setGuidelineRuns([]);
+        return;
+      }
+
+      const relevantRuns = listStoredRuns().filter((run) =>
+        (run.document_ids ?? []).some((documentId) => contractDocumentIds.includes(documentId))
+      );
+
+      try {
+        setGuidelineError(null);
+        await Promise.all(
+          relevantRuns.map(async (run) => {
+            if (run.execution_mode === "local") {
+              return;
+            }
+
+            const runResponse = await apiClient.getCheckRun(run.check_id);
+            upsertStoredRun({ ...run, ...runResponse });
+
+            if (runResponse.status === "completed") {
+              const resultsResponse = await apiClient.getCheckResults(run.check_id);
+              setStoredResults({
+                check_id: resultsResponse.check_id,
+                status: resultsResponse.status,
+                items: resultsResponse.items,
+                updated_at: new Date().toISOString()
+              });
+            }
+          })
+        );
+      } catch (err) {
+        if (!cancelled) {
+          setGuidelineError(err instanceof Error ? err.message : "Failed to refresh guideline checks.");
+        }
+      }
+
+      if (!cancelled) {
+        setGuidelineRuns(
+          listStoredRuns().filter((run) =>
+            (run.document_ids ?? []).some((documentId) => contractDocumentIds.includes(documentId))
+          )
+        );
+      }
+    };
+
+    void refreshRuns();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contractDocumentIds, statusSummary.processing, statusSummary.ingested]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const startPendingAutoGuidelines = async () => {
+      if (!contractId || contractDocumentIds.length === 0 || pendingAutoRuns.length === 0) {
+        return;
+      }
+
+      const filesStillProcessing = files.some((file) => file.status === "ingested" || file.status === "processing");
+      if (filesStillProcessing) {
+        return;
+      }
+
+      setStartingAutoGuidelines(true);
+      setGuidelineError(null);
+
+      try {
+        for (const pending of pendingAutoRuns) {
+          const rule = getStoredGuidelineRule(pending.rule_id);
+          removePendingAutoGuidelineRun(pending.contract_id, pending.rule_id);
+          setPendingAutoRuns(listPendingAutoGuidelineRuns(contractId));
+
+          if (!rule) {
+            continue;
+          }
+
+          await runGuidelineRule({
+            rule,
+            documentIds: contractDocumentIds,
+            documents: files,
+            scope: "contract"
+          });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setGuidelineError(err instanceof Error ? err.message : "Failed to start automatic guideline checks.");
+        }
+      } finally {
+        if (!cancelled) {
+          setStartingAutoGuidelines(false);
+          setPendingAutoRuns(contractId ? listPendingAutoGuidelineRuns(contractId) : []);
+          setGuidelineRuns(
+            listStoredRuns().filter((run) =>
+              (run.document_ids ?? []).some((documentId) => contractDocumentIds.includes(documentId))
+            )
+          );
+        }
+      }
+    };
+
+    void startPendingAutoGuidelines();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contractId, contractDocumentIds, files, pendingAutoRuns]);
 
   const onDragStart = (id: string) => {
     setDraggingId(id);
@@ -416,6 +559,61 @@ export function ContractEditPage() {
               Indexing summary: {statusSummary.indexed} indexed, {statusSummary.processing + statusSummary.ingested} in
               progress, {statusSummary.failed} failed.
             </p>
+          </section>
+
+          <section className="panel">
+            <div className="guideline-section-header">
+              <div>
+                <h3>Guideline Checks</h3>
+                <p className="muted">Automatic and manual guideline checks for the files in this contract.</p>
+              </div>
+              <Link to="/guidelines/run" className="button-link secondary">
+                Run Guideline
+              </Link>
+            </div>
+            {pendingAutoRuns.length > 0 ? (
+              <p className="muted">
+                {files.some((file) => file.status === "ingested" || file.status === "processing")
+                  ? `${pendingAutoRuns.length} automatic guideline check(s) will start once file processing finishes.`
+                  : startingAutoGuidelines
+                    ? `Starting ${pendingAutoRuns.length} automatic guideline check(s)...`
+                    : `${pendingAutoRuns.length} automatic guideline check(s) are queued.`}
+              </p>
+            ) : null}
+            {guidelineRuns.length === 0 && pendingAutoRuns.length === 0 ? (
+              <p className="muted">No guideline checks for this contract yet.</p>
+            ) : null}
+            {guidelineRuns.length > 0 ? (
+              <ul className="run-list">
+                {guidelineRuns.map((run) => {
+                  const cachedResults = getStoredResults(run.check_id);
+                  const flaggedCount =
+                    cachedResults?.items.filter((item) => item.outcome === "missing" || item.outcome === "review")
+                      .length ?? 0;
+
+                  return (
+                    <li key={run.check_id}>
+                      <Link to={`/guidelines?checkId=${encodeURIComponent(run.check_id)}`} className="run-item">
+                        <span className="guideline-run-item-copy">
+                          <span className="guideline-run-item-title">
+                            <span className="guideline-run-status-emoji" aria-hidden="true">
+                              {formatGuidelineRunStatusEmoji(run.status)}
+                            </span>
+                            <span>{run.rule_name ?? "Guideline run"}</span>
+                          </span>
+                          <small>
+                            {run.status === "completed" && cachedResults
+                              ? `Flagged items: ${flaggedCount}`
+                              : `Created ${formatEuropeanDateTime(run.requested_at)}`}
+                          </small>
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+            {guidelineError ? <p className="error-text">{guidelineError}</p> : null}
           </section>
 
           {creationNotice ? (

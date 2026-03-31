@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from .extraction import _clamp_confidence
+from .gemini import GeminiReviewResult, GeminiReviewer
 from .qdrant import QdrantService
 
 
@@ -30,8 +31,9 @@ class AnalysisResult(BaseModel):
 
 
 class AnalysisPipeline:
-    def __init__(self, *, qdrant: QdrantService) -> None:
+    def __init__(self, *, qdrant: QdrantService, gemini_reviewer: GeminiReviewer | None = None) -> None:
         self._qdrant = qdrant
+        self._gemini_reviewer = gemini_reviewer
 
     def analyze_clause(self, *, required_clause_text: str, document_ids: list[str] | None) -> AnalysisResult:
         docs = sorted({doc_id for doc_id in (document_ids or []) if doc_id})
@@ -193,6 +195,54 @@ class AnalysisPipeline:
 
         return AnalysisResult(items=items, diagnostics={"document_count": len(docs), "strategy": "lexical_company"})
 
+    def analyze_llm_review(
+        self,
+        *,
+        instructions: str,
+        documents: list[dict[str, str]] | None,
+    ) -> AnalysisResult:
+        if self._gemini_reviewer is None:
+            raise RuntimeError("Gemini reviewer is not configured")
+
+        prepared_documents = [doc for doc in (documents or []) if str(doc.get("document_id") or "").strip()]
+        if not prepared_documents:
+            return AnalysisResult(items=[], diagnostics={"fallback": "no_documents"})
+
+        items: list[AnalysisResultItem] = []
+        for document in prepared_documents:
+            document_id = str(document.get("document_id") or "").strip()
+            filename = str(document.get("filename") or "").strip()
+            document_text = str(document.get("text") or "").strip()
+
+            if not document_text:
+                items.append(
+                    AnalysisResultItem(
+                        document_id=document_id,
+                        outcome="review",
+                        confidence=0.2,
+                        summary="No extracted text is available for this document; manual review is required.",
+                    )
+                )
+                continue
+
+            review = self._gemini_reviewer.review_document(
+                instructions=instructions,
+                filename=filename,
+                document_text=document_text,
+            )
+            evidence = _evidence_from_snippets(review, document_text)
+            items.append(
+                AnalysisResultItem(
+                    document_id=document_id,
+                    outcome=review.outcome,
+                    confidence=_clamp_confidence(review.confidence),
+                    summary=review.summary,
+                    evidence=evidence,
+                )
+            )
+
+        return AnalysisResult(items=items, diagnostics={"document_count": len(prepared_documents), "strategy": "gemini_llm_review"})
+
 
 def _build_evidence(chunk: dict[str, Any] | None, score: float) -> list[AnalysisEvidenceSnippet]:
     if not chunk:
@@ -228,3 +278,35 @@ def _token_overlap(left: set[str], right: set[str]) -> float:
     if not left or not right:
         return 0.0
     return len(left.intersection(right)) / float(len(left))
+
+
+def _evidence_from_snippets(review: GeminiReviewResult, document_text: str) -> list[AnalysisEvidenceSnippet]:
+    pages = _split_pages(document_text)
+    evidence: list[AnalysisEvidenceSnippet] = []
+    for snippet in review.evidence_snippets:
+        page_number = _find_page_number(pages, snippet)
+        evidence.append(
+            AnalysisEvidenceSnippet(
+                snippet_text=snippet,
+                page_number=page_number,
+            )
+        )
+    return evidence
+
+
+def _split_pages(document_text: str) -> list[str]:
+    parts = [part.strip() for part in document_text.split("\f")]
+    return [part for part in parts if part]
+
+
+def _find_page_number(pages: list[str], snippet: str) -> int:
+    if not pages:
+        return 1
+    normalized_snippet = " ".join(snippet.lower().split())
+    if not normalized_snippet:
+        return 1
+    for index, page in enumerate(pages, start=1):
+        normalized_page = " ".join(page.lower().split())
+        if normalized_snippet in normalized_page:
+            return index
+    return 1

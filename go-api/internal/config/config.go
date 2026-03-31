@@ -23,6 +23,7 @@ type Config struct {
 	DatabasePingTimeout  time.Duration
 	InternalServiceToken string
 	InternalAIBaseURL    string
+	InternalAITimeout    time.Duration
 	ExternalCopyBaseURL  string
 	ExternalCopyToken    string
 	ExternalCopyTimeout  time.Duration
@@ -47,6 +48,7 @@ func Load() (Config, error) {
 		DatabasePingTimeout:  5 * time.Second,
 		InternalServiceToken: defaultInternalToken,
 		InternalAIBaseURL:    "http://localhost:8000",
+		InternalAITimeout:    90 * time.Second,
 		ExternalCopyTimeout:  8 * time.Second,
 		ExternalCopyRetries:  3,
 		StorageProvider:      "minio",
@@ -119,6 +121,13 @@ func Load() (Config, error) {
 
 	if v := strings.TrimSpace(os.Getenv("INTERNAL_AI_BASE_URL")); v != "" {
 		cfg.InternalAIBaseURL = strings.TrimRight(v, "/")
+	}
+	if v := strings.TrimSpace(os.Getenv("INTERNAL_AI_TIMEOUT")); v != "" {
+		dur, err := time.ParseDuration(v)
+		if err != nil || dur <= 0 {
+			return Config{}, fmt.Errorf("invalid INTERNAL_AI_TIMEOUT: %q", v)
+		}
+		cfg.InternalAITimeout = dur
 	}
 	if v := strings.TrimSpace(os.Getenv("EXTERNAL_COPY_API_BASE_URL")); v != "" {
 		cfg.ExternalCopyBaseURL = strings.TrimRight(v, "/")

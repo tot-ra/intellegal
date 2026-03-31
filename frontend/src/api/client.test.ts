@@ -95,6 +95,41 @@ describe("ApiClient", () => {
     ).rejects.toEqual(expect.any(ApiError));
   });
 
+  it("posts LLM review checks to the dedicated guideline endpoint", async () => {
+    const fetchFn = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          check_id: "check-llm-1",
+          status: "queued",
+          check_type: "llm_review"
+        }),
+        { status: 202 }
+      )
+    );
+
+    const client = new ApiClient("http://localhost:8080", fetchFn as typeof fetch);
+
+    await client.startLLMReviewCheck(
+      {
+        document_ids: ["doc-1"],
+        instructions: "Review the whole contract for a termination for convenience right."
+      },
+      { idempotencyKey: "idem-llm-1" }
+    );
+
+    expect(fetchFn).toHaveBeenCalledWith(
+      "http://localhost:8080/api/v1/guidelines/llm-review",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "Idempotency-Key": "idem-llm-1",
+          "Content-Type": "application/json"
+        }),
+        body: expect.stringContaining('"instructions":"Review the whole contract for a termination for convenience right."')
+      })
+    );
+  });
+
   it("sends delete request for deleteDocument", async () => {
     const fetchFn = vi.fn(async () => new Response(null, { status: 204 }));
     const client = new ApiClient("http://localhost:8080", fetchFn as typeof fetch);

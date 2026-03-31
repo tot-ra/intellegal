@@ -12,11 +12,13 @@ import (
 type capturingAIClient struct {
 	clauseReq  *ai.AnalyzeClauseRequest
 	companyReq *ai.AnalyzeCompanyNameRequest
+	llmReq     *ai.AnalyzeLLMReviewRequest
 	extractReq *ai.ExtractRequest
 	indexReq   *ai.IndexRequest
 	searchReq  *ai.SearchSectionsRequest
 	clauseErr  error
 	companyErr error
+	llmErr     error
 	extractErr error
 	indexErr   error
 	searchErr  error
@@ -58,6 +60,29 @@ func (c *capturingAIClient) AnalyzeCompanyName(_ context.Context, req ai.Analyze
 			Outcome:    "review",
 			Confidence: 0.6,
 			Summary:    "Both old and new names found.",
+		})
+	}
+	return ai.AnalysisResult{Items: items}, nil
+}
+
+func (c *capturingAIClient) AnalyzeLLMReview(_ context.Context, req ai.AnalyzeLLMReviewRequest) (ai.AnalysisResult, error) {
+	copyReq := req
+	copyReq.DocumentIDs = append([]string(nil), req.DocumentIDs...)
+	copyReq.Documents = append([]ai.AnalyzeDocument(nil), req.Documents...)
+	c.llmReq = &copyReq
+	if c.llmErr != nil {
+		return ai.AnalysisResult{}, c.llmErr
+	}
+	items := make([]ai.AnalysisResultItem, 0, len(req.DocumentIDs))
+	for _, documentID := range req.DocumentIDs {
+		items = append(items, ai.AnalysisResultItem{
+			DocumentID: documentID,
+			Outcome:    "review",
+			Confidence: 0.78,
+			Summary:    "Gemini flagged a legal risk that needs review.",
+			Evidence: []ai.AnalysisEvidenceSnippet{
+				{SnippetText: "Either party may terminate on thirty days written notice.", PageNumber: 2},
+			},
 		})
 	}
 	return ai.AnalysisResult{Items: items}, nil
@@ -190,5 +215,56 @@ func TestRunCompanyNameCheckMarksFailedWhenAIClientReturnsError(t *testing.T) {
 	}
 	if run.FailureReason != "upstream timeout" {
 		t.Fatalf("expected failure reason to be propagated, got %q", run.FailureReason)
+	}
+}
+
+func TestRunLLMReviewCheckPassesExtractedDocumentText(t *testing.T) {
+	aiClient := &capturingAIClient{}
+	api := NewAPI(noopLogger{}, aiClient, nil, nil)
+
+	checkID := "00000000-0000-4000-8000-000000000031"
+	docID := "00000000-0000-4000-8000-000000000032"
+	api.checks[checkID] = checkRun{
+		CheckID:     checkID,
+		Status:      checkStatusQueued,
+		CheckType:   checkTypeLLMReview,
+		RequestedAt: time.Now().UTC(),
+		DocumentIDs: []string{docID},
+	}
+	api.documents[docID] = document{
+		ID:            docID,
+		Filename:      "msa.pdf",
+		ExtractedText: "Page 1\fEither party may terminate on thirty days written notice.",
+	}
+
+	api.runLLMReviewCheck(checkID, llmReviewCheckRequest{
+		Instructions: "Review the full contract for termination for convenience.",
+	}, "req-llm-123")
+
+	if aiClient.llmReq == nil {
+		t.Fatal("expected AnalyzeLLMReview to be called")
+	}
+	if aiClient.llmReq.CheckID != checkID {
+		t.Fatalf("expected check id %q, got %q", checkID, aiClient.llmReq.CheckID)
+	}
+	if aiClient.llmReq.RequestID != "req-llm-123" {
+		t.Fatalf("expected request id req-llm-123, got %q", aiClient.llmReq.RequestID)
+	}
+	if aiClient.llmReq.Instructions != "Review the full contract for termination for convenience." {
+		t.Fatalf("unexpected instructions: %q", aiClient.llmReq.Instructions)
+	}
+	if len(aiClient.llmReq.Documents) != 1 {
+		t.Fatalf("expected one document payload, got %d", len(aiClient.llmReq.Documents))
+	}
+	if aiClient.llmReq.Documents[0].Text == "" {
+		t.Fatal("expected extracted text to be forwarded")
+	}
+
+	run := api.checks[checkID]
+	if run.Status != checkStatusCompleted {
+		t.Fatalf("expected status completed, got %q", run.Status)
+	}
+	if len(run.Items) != 1 || run.Items[0].Outcome != "review" {
+		t.Fatalf("expected a mapped review result, got %#v", run.Items)
 	}
 }

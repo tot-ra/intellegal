@@ -181,6 +181,39 @@ describe("router", () => {
     expect(screen.getByText(/Created 02\.01\.2026/)).toBeVisible();
   });
 
+  it("shows rule type icons and badges in the guidelines rule list", () => {
+    window.localStorage.setItem(
+      "ldi.guidelineRules",
+      JSON.stringify([
+        {
+          id: "rule-1",
+          name: "Payment words",
+          rule_type: "keyword_match",
+          instructions: "Must contain: payment terms",
+          required_terms: ["payment terms"],
+          forbidden_terms: [],
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z"
+        },
+        {
+          id: "rule-2",
+          name: "Estonian entity review",
+          rule_type: "llm_review",
+          instructions: "Review whether the company is clearly identified as an Estonian legal entity.",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z"
+        }
+      ])
+    );
+
+    renderAt("/guidelines");
+
+    expect(screen.getByText("🔎")).toBeVisible();
+    expect(screen.getByText("🧠")).toBeVisible();
+    expect(screen.getByText("Strict keyword check")).toBeVisible();
+    expect(screen.getByText("LLM contract review")).toBeVisible();
+  });
+
   it("shows checked contract names as clickable links in guideline results", async () => {
     window.localStorage.setItem(
       "ldi.checkRuns",
@@ -303,6 +336,7 @@ describe("router", () => {
     expect(screen.getByRole("heading", { level: 2, name: "New Guideline Rule" })).toBeVisible();
     expect(screen.getByLabelText("Rule Name")).toBeVisible();
     expect(screen.getByLabelText("Rule Instructions")).toBeVisible();
+    expect(screen.getByLabelText("Run this rule automatically for every new contract.")).toBeVisible();
     expect(screen.getByRole("link", { name: "Back to Guidelines" })).toHaveAttribute("href", "/guidelines");
   });
 

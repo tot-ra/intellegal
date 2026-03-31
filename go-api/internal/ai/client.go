@@ -20,6 +20,12 @@ type AnalyzeClauseRequest struct {
 	ContextHint        string   `json:"context_hint,omitempty"`
 }
 
+type AnalyzeDocument struct {
+	DocumentID string `json:"document_id"`
+	Filename   string `json:"filename,omitempty"`
+	Text       string `json:"text,omitempty"`
+}
+
 type AnalysisEvidenceSnippet struct {
 	SnippetText string  `json:"snippet_text"`
 	PageNumber  int     `json:"page_number"`
@@ -47,6 +53,15 @@ type AnalyzeCompanyNameRequest struct {
 	DocumentIDs    []string `json:"document_ids,omitempty"`
 	OldCompanyName string   `json:"old_company_name"`
 	NewCompanyName string   `json:"new_company_name,omitempty"`
+}
+
+type AnalyzeLLMReviewRequest struct {
+	JobID        string            `json:"job_id"`
+	RequestID    string            `json:"request_id,omitempty"`
+	CheckID      string            `json:"check_id"`
+	DocumentIDs  []string          `json:"document_ids,omitempty"`
+	Instructions string            `json:"instructions"`
+	Documents    []AnalyzeDocument `json:"documents,omitempty"`
 }
 
 type ExtractRequest struct {
@@ -133,12 +148,15 @@ type Client struct {
 	httpClient *http.Client
 }
 
-func NewClient(baseURL, token string) *Client {
+func NewClient(baseURL, token string, timeout time.Duration) *Client {
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		token:   token,
 		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: timeout,
 		},
 	}
 }
@@ -154,6 +172,14 @@ func (c *Client) AnalyzeClause(ctx context.Context, req AnalyzeClauseRequest) (A
 func (c *Client) AnalyzeCompanyName(ctx context.Context, req AnalyzeCompanyNameRequest) (AnalysisResult, error) {
 	var out acceptedJobResponse[AnalysisResult]
 	if err := c.postJSONWithResponse(ctx, "/internal/v1/analyze/company-name", req, &out); err != nil {
+		return AnalysisResult{}, err
+	}
+	return out.Result, nil
+}
+
+func (c *Client) AnalyzeLLMReview(ctx context.Context, req AnalyzeLLMReviewRequest) (AnalysisResult, error) {
+	var out acceptedJobResponse[AnalysisResult]
+	if err := c.postJSONWithResponse(ctx, "/internal/v1/analyze/llm-review", req, &out); err != nil {
 		return AnalysisResult{}, err
 	}
 	return out.Result, nil

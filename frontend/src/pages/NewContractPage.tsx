@@ -1,7 +1,7 @@
 import { type DragEvent, type FormEvent, type KeyboardEvent, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiClient } from "../api/client";
-import { addAuditEvent } from "../app/localState";
+import { addAuditEvent, enqueuePendingAutoGuidelineRuns, listStoredGuidelineRules } from "../app/localState";
 import {
   deriveContractNameFromFile,
   isRecoverableProcessingError,
@@ -89,6 +89,7 @@ export function NewContractPage() {
     setUploadError(null);
 
     let createdContractId: string | null = null;
+    const uploadedDocumentIds: string[] = [];
 
     try {
       const tags = parseTagsInput(tagsInput);
@@ -106,7 +107,7 @@ export function NewContractPage() {
       for (const file of files) {
         const contentBase64 = await toBase64(file);
         try {
-          await apiClient.addContractFile(
+          const uploadedDocument = await apiClient.addContractFile(
             contract.id,
             {
               filename: file.name,
@@ -117,6 +118,7 @@ export function NewContractPage() {
             },
             { idempotencyKey: globalThis.crypto?.randomUUID?.() ?? `upload-${Date.now()}-${file.name}` }
           );
+          uploadedDocumentIds.push(uploadedDocument.id);
         } catch (err) {
           if (isRecoverableProcessingError(err)) {
             processingFailureCount += 1;
@@ -132,8 +134,17 @@ export function NewContractPage() {
         metadata: { contract_id: contract.id, file_count: String(files.length) }
       });
 
+      const autoRunRuleIds = listStoredGuidelineRules()
+        .filter((rule) => rule.auto_run_on_new_contract)
+        .map((rule) => rule.id);
+      if (uploadedDocumentIds.length > 0 && autoRunRuleIds.length > 0) {
+        enqueuePendingAutoGuidelineRuns(contract.id, autoRunRuleIds);
+      }
+
       const notice =
-        processingFailureCount > 0
+        autoRunRuleIds.length > 0
+          ? `Contract created. ${autoRunRuleIds.length} automatic guideline check(s) will run in the Files section when processing is ready.`
+          : processingFailureCount > 0
           ? `Contract created. ${processingFailureCount} file(s) uploaded with text-processing issues; track status here.`
           : "Contract created. Indexing status will update here.";
       navigate(`/contracts/${encodeURIComponent(contract.id)}/edit?notice=${encodeURIComponent(notice)}`);

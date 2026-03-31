@@ -17,6 +17,7 @@ export function GuidelineCreatePage() {
   );
   const [requiredTermsText, setRequiredTermsText] = useState("osaühing\naktsiaselts");
   const [forbiddenTermsText, setForbiddenTermsText] = useState("");
+  const [autoRunOnNewContract, setAutoRunOnNewContract] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,6 +58,7 @@ export function GuidelineCreatePage() {
         id: ruleId,
         name: ruleName.trim(),
         rule_type: ruleType,
+        auto_run_on_new_contract: autoRunOnNewContract,
         instructions:
           ruleType === "llm_review"
             ? ruleText.trim()
@@ -162,6 +164,19 @@ export function GuidelineCreatePage() {
               </>
             )}
           </div>
+
+          <label className="guideline-field">
+            <span className="field-label">Automatic Run</span>
+            <span className="checkbox-row">
+              <input
+                type="checkbox"
+                aria-label="Run this rule automatically for every new contract."
+                checked={autoRunOnNewContract}
+                onChange={(event) => setAutoRunOnNewContract(event.target.checked)}
+              />
+              Run this rule automatically for every new contract.
+            </span>
+          </label>
         </div>
 
         {error ? <p className="error-text">{error}</p> : null}

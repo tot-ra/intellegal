@@ -65,6 +65,32 @@ func (a *API) CreateCompanyNameCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, checkAcceptedResponse{CheckID: checkID, Status: status, CheckType: checkTypeCompany})
 }
 
+func (a *API) CreateLLMReviewCheck(w http.ResponseWriter, r *http.Request) {
+	var req llmReviewCheckRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	if len(strings.TrimSpace(req.Instructions)) < 5 {
+		writeError(w, http.StatusBadRequest, "invalid_argument", "instructions must be at least 5 characters", false, nil)
+		return
+	}
+
+	checkID, status, reused, err := a.createCheck(r, checkTypeLLMReview, req, req.DocumentIDs)
+	if err != nil {
+		handleCreateCheckError(w, err)
+		return
+	}
+	if reused {
+		a.logger.Info("idempotent check request reused", "check_id", checkID, "check_type", checkTypeLLMReview)
+		writeJSON(w, http.StatusAccepted, checkAcceptedResponse{CheckID: checkID, Status: status, CheckType: checkTypeLLMReview})
+		return
+	}
+
+	go a.runLLMReviewCheck(checkID, req, middleware.GetRequestID(r.Context()))
+	writeJSON(w, http.StatusAccepted, checkAcceptedResponse{CheckID: checkID, Status: status, CheckType: checkTypeLLMReview})
+}
+
 func (a *API) GetCheck(w http.ResponseWriter, r *http.Request) {
 	checkID := pathParam(r, "check_id")
 	if !isUUID(checkID) {
@@ -344,6 +370,44 @@ func (a *API) runCompanyNameCheck(checkID string, req companyNameCheckRequest, r
 	}
 
 	items := mapAnalysisItems(run.DocumentIDs, result.Items, "Company-name analysis returned no items; manual review is required.")
+	a.markCheckCompleted(checkID, items)
+}
+
+func (a *API) runLLMReviewCheck(checkID string, req llmReviewCheckRequest, requestID string) {
+	if !a.markCheckRunning(checkID) {
+		return
+	}
+
+	a.mu.RLock()
+	run := a.checks[checkID]
+	documents := make([]ai.AnalyzeDocument, 0, len(run.DocumentIDs))
+	for _, documentID := range run.DocumentIDs {
+		doc, ok := a.documents[documentID]
+		if !ok {
+			continue
+		}
+		documents = append(documents, ai.AnalyzeDocument{
+			DocumentID: documentID,
+			Filename:   doc.Filename,
+			Text:       doc.ExtractedText,
+		})
+	}
+	a.mu.RUnlock()
+
+	result, err := a.ai.AnalyzeLLMReview(context.Background(), ai.AnalyzeLLMReviewRequest{
+		JobID:        newUUID(),
+		RequestID:    requestID,
+		CheckID:      checkID,
+		DocumentIDs:  run.DocumentIDs,
+		Instructions: req.Instructions,
+		Documents:    documents,
+	})
+	if err != nil {
+		a.markCheckFailed(checkID, err)
+		return
+	}
+
+	items := mapAnalysisItems(run.DocumentIDs, result.Items, "LLM review returned no items; manual review is required.")
 	a.markCheckCompleted(checkID, items)
 }
 

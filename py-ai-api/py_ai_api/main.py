@@ -12,6 +12,7 @@ from .analysis import AnalysisPipeline, AnalysisResult
 from .config import Settings, get_settings
 from .db import ChunkSearchStore, check_connection
 from .extraction import ExtractionError, ExtractionPipeline, ExtractionResult
+from .gemini import GeminiError, GeminiReviewer
 from .indexing import IndexPageInput, IndexingPipeline, IndexingResult
 from .logging import configure_logging
 from .qdrant import QdrantService
@@ -90,6 +91,21 @@ class AnalyzeCompanyNameJobRequest(BaseModel):
     new_company_name: str | None = None
 
 
+class AnalyzeLLMReviewDocument(BaseModel):
+    document_id: str
+    filename: str | None = None
+    text: str | None = None
+
+
+class AnalyzeLLMReviewJobRequest(BaseModel):
+    job_id: str
+    request_id: str | None = None
+    check_id: str
+    document_ids: list[str] | None = None
+    instructions: str
+    documents: list[AnalyzeLLMReviewDocument] | None = None
+
+
 class SearchSectionsJobRequest(BaseModel):
     job_id: str
     request_id: str | None = None
@@ -127,9 +143,17 @@ def get_indexing_pipeline(
 
 
 def get_analysis_pipeline(
+    settings: Annotated[Settings, Depends(get_settings)],
     qdrant: Annotated[QdrantService, Depends(get_qdrant_service)],
 ) -> AnalysisPipeline:
-    return AnalysisPipeline(qdrant=qdrant)
+    reviewer = None
+    if settings.gemini_api_key.strip():
+        reviewer = GeminiReviewer(
+            api_key=settings.gemini_api_key,
+            model=settings.gemini_model,
+            timeout_seconds=settings.gemini_timeout_seconds,
+        )
+    return AnalysisPipeline(qdrant=qdrant, gemini_reviewer=reviewer)
 
 
 def get_search_pipeline(
@@ -147,6 +171,7 @@ def health(settings: Annotated[Settings, Depends(get_settings)]) -> dict[str, st
         "service": settings.app_name,
         "env": settings.app_env,
         "qdrant_collection": settings.qdrant_collection_name,
+        "gemini_configured": "true" if settings.gemini_api_key.strip() else "false",
     }
 
 
@@ -269,6 +294,40 @@ def start_company_name_analysis_job(
         job_id=payload.job_id,
         status="completed",
         job_type="analyze_company_name",
+        result=result.model_dump(),
+    )
+
+
+@app.post(
+    "/internal/v1/analyze/llm-review",
+    status_code=202,
+    response_model=AcceptedJobResponse,
+    dependencies=[Depends(require_internal_service_auth)],
+)
+def start_llm_review_analysis_job(
+    payload: AnalyzeLLMReviewJobRequest,
+    pipeline: Annotated[AnalysisPipeline, Depends(get_analysis_pipeline)],
+) -> AcceptedJobResponse | JSONResponse:
+    try:
+        result: AnalysisResult = pipeline.analyze_llm_review(
+            instructions=payload.instructions,
+            documents=[document.model_dump() for document in (payload.documents or [])],
+        )
+    except (GeminiError, RuntimeError) as exc:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": {
+                    "code": "llm_review_unavailable",
+                    "message": str(exc),
+                    "retriable": True,
+                }
+            },
+        )
+    return AcceptedJobResponse(
+        job_id=payload.job_id,
+        status="completed",
+        job_type="analyze_llm_review",
         result=result.model_dump(),
     )
 

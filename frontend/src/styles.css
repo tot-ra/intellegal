@@ -709,11 +709,11 @@ th {
 }
 
 .guideline-rule-item {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 0.8rem;
   align-items: start;
-  padding: 0.2rem 0;
+  padding: 0.3rem 0;
   border-bottom: 1px solid #e2e9f8;
 }
 
@@ -721,9 +721,67 @@ th {
   border-bottom: 0;
 }
 
+.guideline-rule-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  border: 1px solid #d5def0;
+  background: linear-gradient(145deg, #f7faff, #edf4ff);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.guideline-rule-icon-strict {
+  border-color: #b7d4df;
+  background: linear-gradient(145deg, #f0fbff, #e3f5f1);
+}
+
+.guideline-rule-icon-llm {
+  border-color: #cfd9f7;
+  background: linear-gradient(145deg, #f6f8ff, #eaf0ff);
+}
+
 .guideline-rule-copy {
   display: grid;
   gap: 0.35rem;
+  min-width: 0;
+}
+
+.guideline-rule-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.guideline-rule-type-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.65rem;
+  padding: 0.14rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid #d5def0;
+  color: #315082;
+  background: #f4f8ff;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.guideline-rule-type-badge-strict {
+  border-color: #b9ddd6;
+  color: #1f5c63;
+  background: #ebfbf7;
+}
+
+.guideline-rule-type-badge-llm {
+  border-color: #ced7f3;
+  color: #314c8c;
+  background: #eef3ff;
 }
 
 .guideline-rule-actions {
@@ -809,6 +867,18 @@ th {
 
 .guideline-rule-copy p {
   margin: 0;
+}
+
+@media (max-width: 760px) {
+  .guideline-rule-item {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .guideline-rule-actions {
+    grid-column: 1 / -1;
+    padding-left: 3.3rem;
+    flex-wrap: wrap;
+  }
 }
 
 .detail-stack p {

@@ -6,20 +6,20 @@ describe("check run flow integration", () => {
     const accepted: CheckAcceptedResponse = {
       check_id: "check-123",
       status: "queued",
-      check_type: "clause_presence"
+      check_type: "llm_review"
     };
 
     const running: CheckRunResponse = {
       check_id: "check-123",
       status: "running",
-      check_type: "clause_presence",
+      check_type: "llm_review",
       requested_at: "2026-01-01T00:00:00Z"
     };
 
     const completed: CheckRunResponse = {
       check_id: "check-123",
       status: "completed",
-      check_type: "clause_presence",
+      check_type: "llm_review",
       requested_at: "2026-01-01T00:00:00Z",
       finished_at: "2026-01-01T00:00:03Z"
     };
@@ -47,9 +47,9 @@ describe("check run flow integration", () => {
 
     const client = new ApiClient("http://localhost:8080", fetchFn as typeof fetch);
 
-    const run = await client.startClausePresenceCheck({
+    const run = await client.startLLMReviewCheck({
       document_ids: ["doc-1"],
-      required_clause_text: "Termination for convenience"
+      instructions: "Termination for convenience"
     });
     expect(run).toEqual(accepted);
 
@@ -65,7 +65,7 @@ describe("check run flow integration", () => {
 
     expect(fetchFn).toHaveBeenNthCalledWith(
       1,
-      "http://localhost:8080/api/v1/guidelines/clause-presence",
+      "http://localhost:8080/api/v1/guidelines/llm-review",
       expect.objectContaining({ method: "POST" })
     );
     expect(fetchFn).toHaveBeenNthCalledWith(

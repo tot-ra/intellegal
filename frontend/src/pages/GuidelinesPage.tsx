@@ -13,7 +13,8 @@ import {
   upsertStoredRun
 } from "../app/localState";
 import { apiClient, type CheckResultItem, type CheckRunResponse, type CheckType } from "../api/client";
-import { describeGuidelineRule } from "../app/guidelineRules";
+import { describeGuidelineRule, getGuidelineRuleTypeDisplay, normalizeGuidelineRule } from "../app/guidelineRules";
+import { formatGuidelineRuleType, formatGuidelineRunStatusEmoji } from "../app/guidelineRunFlow";
 
 type SelectedRun = {
   check_id: string;
@@ -265,24 +266,40 @@ export function GuidelinesPage() {
           </header>
           {rules.length === 0 ? <p className="muted">No rules created yet.</p> : null}
           <ul className="run-list guideline-rule-list">
-            {rules.map((rule) => (
-              <li key={rule.id}>
-                <div className="guideline-rule-item">
-                  <div className="guideline-rule-copy">
-                    <strong>{rule.name}</strong>
-                    <p className="muted">{describeGuidelineRule(rule)}</p>
+            {rules.map((rule) => {
+              const normalizedRule = normalizeGuidelineRule(rule);
+              const typeDisplay = getGuidelineRuleTypeDisplay(normalizedRule.rule_type);
+
+              return (
+                <li key={rule.id}>
+                  <div className="guideline-rule-item">
+                    <div className={`guideline-rule-icon guideline-rule-icon-${typeDisplay.tone}`} aria-hidden="true">
+                      <span>{typeDisplay.icon}</span>
+                    </div>
+                    <div className="guideline-rule-copy">
+                      <div className="guideline-rule-heading">
+                        <strong>{rule.name}</strong>
+                        <span className={`guideline-rule-type-badge guideline-rule-type-badge-${typeDisplay.tone}`}>
+                          {typeDisplay.label}
+                        </span>
+                      </div>
+                      <p className="muted">{describeGuidelineRule(rule)}</p>
+                      {rule.auto_run_on_new_contract ? (
+                        <p className="muted">Runs automatically for new contracts.</p>
+                      ) : null}
+                    </div>
+                    <div className="guideline-rule-actions">
+                      <Link to={`/guidelines/run?ruleId=${encodeURIComponent(rule.id)}`} className="button-link secondary">
+                        Run
+                      </Link>
+                      <button type="button" className="danger" onClick={() => handleDeleteRule(rule)}>
+                        Delete
+                      </button>
+                    </div>
                   </div>
-                  <div className="guideline-rule-actions">
-                    <Link to={`/guidelines/run?ruleId=${encodeURIComponent(rule.id)}`} className="button-link secondary">
-                      Run
-                    </Link>
-                    <button type="button" className="danger" onClick={() => handleDeleteRule(rule)}>
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         </section>
 
@@ -321,7 +338,7 @@ export function GuidelinesPage() {
                       <span className="guideline-run-item-copy">
                         <span className="guideline-run-item-title">
                           <span className="guideline-run-status-emoji" aria-hidden="true">
-                            {formatRunStatusEmoji(item.status)}
+                            {formatGuidelineRunStatusEmoji(item.status)}
                           </span>
                           <span>{formatRunLabel(item)}</span>
                         </span>
@@ -344,7 +361,7 @@ export function GuidelinesPage() {
                   </p>
                   {selected?.rule_type ? (
                     <p>
-                      <strong>Type:</strong> {formatRuleType(selected.rule_type)}
+                      <strong>Type:</strong> {formatGuidelineRuleType(selected.rule_type)}
                     </p>
                   ) : null}
                   <p>
@@ -432,23 +449,4 @@ export function GuidelinesPage() {
 
 function formatRunLabel(item: StoredCheckRun) {
   return item.rule_name?.trim() || "Guideline run";
-}
-
-function formatRunStatusEmoji(status: StoredCheckRun["status"]) {
-  switch (status) {
-    case "queued":
-      return "🕒";
-    case "running":
-      return "⏳";
-    case "completed":
-      return "✅";
-    case "failed":
-      return "❌";
-    default:
-      return "•";
-  }
-}
-
-function formatRuleType(ruleType: NonNullable<StoredCheckRun["rule_type"]>) {
-  return ruleType === "keyword_match" ? "Strict keyword check" : "LLM contract review";
 }

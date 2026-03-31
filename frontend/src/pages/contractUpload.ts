@@ -77,7 +77,7 @@ export async function createSingleFileContract(file: File, tags: string[]) {
   const contentBase64 = await toBase64(file);
 
   try {
-    await apiClient.addContractFile(
+    const uploadedDocument = await apiClient.addContractFile(
       contract.id,
       {
         filename: file.name,
@@ -89,10 +89,10 @@ export async function createSingleFileContract(file: File, tags: string[]) {
       { idempotencyKey: globalThis.crypto?.randomUUID?.() ?? `upload-${Date.now()}-${file.name}` }
     );
 
-    return { contract, processingIssue: false };
+    return { contract, uploadedDocument, processingIssue: false };
   } catch (err) {
     if (isRecoverableProcessingError(err)) {
-      return { contract, processingIssue: true };
+      return { contract, uploadedDocument: null, processingIssue: true };
     }
     throw err;
   }

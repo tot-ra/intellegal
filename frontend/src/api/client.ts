@@ -2,7 +2,7 @@ import { appConfig } from "../config/env";
 
 export type DocumentStatus = "ingested" | "processing" | "indexed" | "failed";
 export type CheckRunStatus = "queued" | "running" | "completed" | "failed";
-export type CheckType = "clause_presence" | "company_name";
+export type CheckType = "clause_presence" | "company_name" | "llm_review";
 
 export type ErrorEnvelope = {
   error: {
@@ -92,6 +92,11 @@ export type CompanyNameCheckRequest = {
   document_ids?: string[];
   old_company_name: string;
   new_company_name?: string;
+};
+
+export type LLMReviewCheckRequest = {
+  document_ids?: string[];
+  instructions: string;
 };
 
 export type CheckAcceptedResponse = {
@@ -299,6 +304,10 @@ export class ApiClient {
       body,
       options
     );
+  }
+
+  startLLMReviewCheck(body: LLMReviewCheckRequest, options?: RequestOptions) {
+    return this.request<CheckAcceptedResponse>("POST", "/api/v1/guidelines/llm-review", body, options);
   }
 
   getCheckRun(checkId: string) {

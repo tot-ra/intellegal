@@ -49,6 +49,7 @@ func New(
 		r.Route(prefix, func(r chi.Router) {
 			r.Post("/clause-presence", api.CreateClauseCheck)
 			r.Post("/company-name", api.CreateCompanyNameCheck)
+			r.Post("/llm-review", api.CreateLLMReviewCheck)
 			r.Route("/{check_id}", func(r chi.Router) {
 				r.Get("/", api.GetCheck)
 				r.Get("/results", api.GetCheckResults)

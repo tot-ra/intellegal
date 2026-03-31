@@ -21,6 +21,9 @@ func (mockAIClient) AnalyzeClause(_ context.Context, _ ai.AnalyzeClauseRequest) 
 func (mockAIClient) AnalyzeCompanyName(_ context.Context, _ ai.AnalyzeCompanyNameRequest) (ai.AnalysisResult, error) {
 	return ai.AnalysisResult{}, nil
 }
+func (mockAIClient) AnalyzeLLMReview(_ context.Context, _ ai.AnalyzeLLMReviewRequest) (ai.AnalysisResult, error) {
+	return ai.AnalysisResult{}, nil
+}
 func (mockAIClient) Extract(_ context.Context, req ai.ExtractRequest) (ai.ExtractResult, error) {
 	return ai.ExtractResult{MIMEType: req.MIMEType, Text: "ok"}, nil
 }

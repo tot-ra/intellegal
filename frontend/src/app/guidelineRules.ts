@@ -1,10 +1,17 @@
 export type GuidelineRuleType = "llm_review" | "keyword_match";
 
+export type GuidelineRuleTypeDisplay = {
+  icon: string;
+  label: string;
+  tone: "strict" | "llm";
+};
+
 export type StoredGuidelineRule = {
   id: string;
   name: string;
   rule_type?: GuidelineRuleType;
   instructions: string;
+  auto_run_on_new_contract?: boolean;
   required_terms?: string[];
   forbidden_terms?: string[];
   created_at: string;
@@ -16,6 +23,7 @@ export type NormalizedGuidelineRule = {
   name: string;
   rule_type: GuidelineRuleType;
   instructions: string;
+  auto_run_on_new_contract: boolean;
   required_terms: string[];
   forbidden_terms: string[];
   created_at: string;
@@ -26,6 +34,7 @@ export function normalizeGuidelineRule(rule: StoredGuidelineRule): NormalizedGui
   return {
     ...rule,
     rule_type: rule.rule_type ?? "llm_review",
+    auto_run_on_new_contract: rule.auto_run_on_new_contract ?? false,
     required_terms: dedupeTerms(rule.required_terms ?? []),
     forbidden_terms: dedupeTerms(rule.forbidden_terms ?? [])
   };
@@ -83,6 +92,22 @@ export function describeGuidelineRule(rule: StoredGuidelineRule): string {
   }
 
   return normalized.instructions;
+}
+
+export function getGuidelineRuleTypeDisplay(ruleType: GuidelineRuleType): GuidelineRuleTypeDisplay {
+  if (ruleType === "keyword_match") {
+    return {
+      icon: "🔎",
+      label: "Strict keyword check",
+      tone: "strict"
+    };
+  }
+
+  return {
+    icon: "🧠",
+    label: "LLM contract review",
+    tone: "llm"
+  };
 }
 
 function dedupeTerms(terms: string[]): string[] {

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAnalyzeClausePostsExpectedRequest(t *testing.T) {
@@ -42,7 +43,7 @@ func TestAnalyzeClausePostsExpectedRequest(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	client := NewClient(ts.URL, "secret-token")
+	client := NewClient(ts.URL, "secret-token", time.Second)
 	result, err := client.AnalyzeClause(context.Background(), AnalyzeClauseRequest{
 		JobID:              "job-1",
 		RequestID:          "req-1",
@@ -83,7 +84,7 @@ func TestAnalyzeCompanyNameReturnsErrorOnNon2xx(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	client := NewClient(ts.URL, "")
+	client := NewClient(ts.URL, "", time.Second)
 	_, err := client.AnalyzeCompanyName(context.Background(), AnalyzeCompanyNameRequest{
 		JobID:          "job-2",
 		CheckID:        "check-2",
@@ -99,5 +100,59 @@ func TestAnalyzeCompanyNameReturnsErrorOnNon2xx(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "python api unavailable") {
 		t.Fatalf("expected upstream response body in error, got: %v", err)
+	}
+}
+
+func TestAnalyzeLLMReviewPostsExpectedRequest(t *testing.T) {
+	t.Parallel()
+
+	var seenPath string
+	var seenBody AnalyzeLLMReviewRequest
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenPath = r.URL.Path
+		if err := json.NewDecoder(r.Body).Decode(&seenBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"job_id":   "job-llm-1",
+			"status":   "completed",
+			"job_type": "analyze_llm_review",
+			"result": map[string]any{
+				"items": []map[string]any{
+					{
+						"document_id": "doc-1",
+						"outcome":     "review",
+						"confidence":  0.77,
+					},
+				},
+			},
+		})
+	}))
+	defer ts.Close()
+
+	client := NewClient(ts.URL, "", time.Second)
+	result, err := client.AnalyzeLLMReview(context.Background(), AnalyzeLLMReviewRequest{
+		JobID:        "job-llm-1",
+		CheckID:      "check-llm-1",
+		DocumentIDs:  []string{"doc-1"},
+		Instructions: "Review the entire contract for termination for convenience.",
+		Documents: []AnalyzeDocument{
+			{DocumentID: "doc-1", Filename: "contract.pdf", Text: "Contract text"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeLLMReview returned error: %v", err)
+	}
+
+	if seenPath != "/internal/v1/analyze/llm-review" {
+		t.Fatalf("unexpected path: %q", seenPath)
+	}
+	if seenBody.Instructions == "" || len(seenBody.Documents) != 1 || seenBody.Documents[0].Text == "" {
+		t.Fatalf("unexpected body payload: %#v", seenBody)
+	}
+	if len(result.Items) != 1 || result.Items[0].Outcome != "review" {
+		t.Fatalf("unexpected llm review result items: %#v", result.Items)
 	}
 }

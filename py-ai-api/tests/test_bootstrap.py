@@ -13,6 +13,7 @@ def _client_with_env(monkeypatch, *, token: str = "test-token") -> TestClient:
     monkeypatch.setenv("APP_NAME", "python-ai-api-test")
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("QDRANT_STARTUP_CHECK_ENABLED", "false")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     get_settings.cache_clear()
     return TestClient(app)
 
@@ -28,6 +29,7 @@ def test_health_endpoint_returns_service_metadata(monkeypatch) -> None:
         "service": "python-ai-api-test",
         "env": "test",
         "qdrant_collection": "document_chunks",
+        "gemini_configured": "false",
     }
 
 
@@ -228,6 +230,95 @@ def test_company_name_analysis_returns_completed_job_with_result(monkeypatch) ->
     payload = response.json()
     assert payload["job_type"] == "analyze_company_name"
     assert payload["result"]["items"][0]["outcome"] == "review"
+
+
+def test_llm_review_analysis_returns_completed_job_with_result(monkeypatch) -> None:
+    client = _client_with_env(monkeypatch, token="shared-secret")
+
+    class _FakeAnalysisPipeline:
+        def analyze_llm_review(self, **kwargs) -> AnalysisResult:
+            assert kwargs["instructions"] == "Review the full contract for termination rights."
+            assert kwargs["documents"] == [
+                {
+                    "document_id": "doc-1",
+                    "filename": "msa.pdf",
+                    "text": "Contract text",
+                }
+            ]
+            return AnalysisResult(
+                items=[
+                    AnalysisResultItem(
+                        document_id="doc-1",
+                        outcome="review",
+                        confidence=0.77,
+                        summary="Potential termination right found.",
+                    )
+                ],
+                diagnostics={"strategy": "gemini_llm_review"},
+            )
+
+    app.dependency_overrides[get_analysis_pipeline] = lambda: _FakeAnalysisPipeline()
+    try:
+        response = client.post(
+            "/internal/v1/analyze/llm-review",
+            headers={"X-Internal-Service-Token": "shared-secret"},
+            json={
+                "job_id": "f463315e-bcc6-4477-926f-83020b3a4bb0",
+                "check_id": "06f16fc3-0d05-4550-9f20-bf757b13f0b0",
+                "document_ids": ["doc-1"],
+                "instructions": "Review the full contract for termination rights.",
+                "documents": [
+                    {
+                        "document_id": "doc-1",
+                        "filename": "msa.pdf",
+                        "text": "Contract text",
+                    }
+                ],
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_analysis_pipeline, None)
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["job_type"] == "analyze_llm_review"
+    assert payload["result"]["items"][0]["outcome"] == "review"
+
+
+def test_llm_review_analysis_returns_structured_error_when_gemini_is_unavailable(monkeypatch) -> None:
+    client = _client_with_env(monkeypatch, token="shared-secret")
+
+    class _FakeAnalysisPipeline:
+        def analyze_llm_review(self, **kwargs) -> AnalysisResult:
+            raise RuntimeError("Gemini reviewer is not configured")
+
+    app.dependency_overrides[get_analysis_pipeline] = lambda: _FakeAnalysisPipeline()
+    try:
+        response = client.post(
+            "/internal/v1/analyze/llm-review",
+            headers={"X-Internal-Service-Token": "shared-secret"},
+            json={
+                "job_id": "f463315e-bcc6-4477-926f-83020b3a4bb1",
+                "check_id": "06f16fc3-0d05-4550-9f20-bf757b13f0b1",
+                "document_ids": ["doc-1"],
+                "instructions": "Review the full contract for termination rights.",
+                "documents": [
+                    {
+                        "document_id": "doc-1",
+                        "filename": "msa.pdf",
+                        "text": "Contract text",
+                    }
+                ],
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_analysis_pipeline, None)
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["error"]["code"] == "llm_review_unavailable"
+    assert payload["error"]["message"] == "Gemini reviewer is not configured"
+    assert payload["error"]["retriable"] is True
 
 
 def test_search_sections_returns_completed_job_with_result(monkeypatch) -> None:

@@ -50,7 +50,7 @@ func New(cfg config.Config, logger logging.Logger) (*App, error) {
 		return nil, fmt.Errorf("postgres ping failed: %w", err)
 	}
 
-	aiClient := ai.NewClient(cfg.InternalAIBaseURL, cfg.InternalServiceToken)
+	aiClient := ai.NewClient(cfg.InternalAIBaseURL, cfg.InternalServiceToken, cfg.InternalAITimeout)
 	copyClient := externalcopy.NewClient(cfg.ExternalCopyBaseURL, cfg.ExternalCopyToken, cfg.ExternalCopyTimeout, cfg.ExternalCopyRetries)
 	api := handlers.NewAPI(logger, aiClient, store, copyClient)
 	router := httprouter.New(logger, api, func(ctx context.Context) error {

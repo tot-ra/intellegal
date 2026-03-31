@@ -34,6 +34,9 @@ func TestLoadDefaultsWithToken(t *testing.T) {
 	if cfg.DatabasePingTimeout != 5*time.Second {
 		t.Fatalf("expected default database ping timeout 5s, got %s", cfg.DatabasePingTimeout)
 	}
+	if cfg.InternalAITimeout != 90*time.Second {
+		t.Fatalf("expected default internal ai timeout 90s, got %s", cfg.InternalAITimeout)
+	}
 	if len(cfg.CORSAllowedOrigins) == 0 {
 		t.Fatal("expected default cors allowed origins")
 	}
@@ -86,6 +89,16 @@ func TestLoadRejectsInvalidDatabasePingTimeout(t *testing.T) {
 	_, err := Load()
 	if err == nil {
 		t.Fatal("expected error for invalid database ping timeout")
+	}
+}
+
+func TestLoadRejectsInvalidInternalAITimeout(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("INTERNAL_AI_TIMEOUT", "zero")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error for invalid internal ai timeout")
 	}
 }
 

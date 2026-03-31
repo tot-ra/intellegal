@@ -53,6 +53,19 @@ func (f *fakeAIClient) AnalyzeCompanyName(_ context.Context, req ai.AnalyzeCompa
 	return ai.AnalysisResult{Items: items}, nil
 }
 
+func (f *fakeAIClient) AnalyzeLLMReview(_ context.Context, req ai.AnalyzeLLMReviewRequest) (ai.AnalysisResult, error) {
+	items := make([]ai.AnalysisResultItem, 0, len(req.DocumentIDs))
+	for _, docID := range req.DocumentIDs {
+		items = append(items, ai.AnalysisResultItem{
+			DocumentID: docID,
+			Outcome:    "review",
+			Confidence: 0.75,
+			Summary:    "LLM review required.",
+		})
+	}
+	return ai.AnalysisResult{Items: items}, nil
+}
+
 func (f *fakeAIClient) Extract(_ context.Context, req ai.ExtractRequest) (ai.ExtractResult, error) {
 	if f.fail {
 		return ai.ExtractResult{}, context.DeadlineExceeded

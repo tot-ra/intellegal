@@ -9,6 +9,7 @@ const CHECK_RUNS_KEY = "ldi.checkRuns";
 const GUIDELINE_RULES_KEY = "ldi.guidelineRules";
 const AUDIT_EVENTS_KEY = "ldi.auditEvents";
 const RUN_RESULTS_KEY = "ldi.runResults";
+const PENDING_AUTO_GUIDELINE_RUNS_KEY = "ldi.pendingAutoGuidelineRuns";
 
 type RunStatus = CheckRunResponse["status"];
 
@@ -18,6 +19,7 @@ export type StoredCheckRun = {
   execution_mode?: "remote" | "local";
   status: RunStatus;
   requested_at: string;
+  document_ids?: string[];
   rule_id?: string;
   rule_name?: string;
   rule_type?: GuidelineRuleType;
@@ -41,6 +43,12 @@ export type AuditEvent = {
   type: "document.uploaded" | "contract.created" | "check.started" | "check.updated" | "results.loaded" | "run.tracked";
   message: string;
   metadata?: Record<string, string>;
+};
+
+export type PendingAutoGuidelineRun = {
+  contract_id: string;
+  rule_id: string;
+  created_at: string;
 };
 
 function readJson<T>(key: string, fallback: T): T {
@@ -132,6 +140,40 @@ export function deleteStoredGuidelineRule(ruleId: string) {
   const rules = readJson<StoredGuidelineRule[]>(GUIDELINE_RULES_KEY, []);
   const next = rules.filter((item) => item.id !== ruleId);
   writeJson(GUIDELINE_RULES_KEY, next);
+}
+
+export function listPendingAutoGuidelineRuns(contractId?: string): PendingAutoGuidelineRun[] {
+  const items = readJson<PendingAutoGuidelineRun[]>(PENDING_AUTO_GUIDELINE_RUNS_KEY, []);
+  const filtered = contractId ? items.filter((item) => item.contract_id === contractId) : items;
+  return [...filtered].sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
+export function enqueuePendingAutoGuidelineRuns(contractId: string, ruleIds: string[]) {
+  if (ruleIds.length === 0) {
+    return;
+  }
+
+  const items = readJson<PendingAutoGuidelineRun[]>(PENDING_AUTO_GUIDELINE_RUNS_KEY, []);
+  const existing = new Set(items.map((item) => `${item.contract_id}:${item.rule_id}`));
+  const now = new Date().toISOString();
+  const next = [...items];
+
+  for (const ruleId of ruleIds) {
+    const key = `${contractId}:${ruleId}`;
+    if (existing.has(key)) {
+      continue;
+    }
+    existing.add(key);
+    next.push({ contract_id: contractId, rule_id: ruleId, created_at: now });
+  }
+
+  writeJson(PENDING_AUTO_GUIDELINE_RUNS_KEY, next);
+}
+
+export function removePendingAutoGuidelineRun(contractId: string, ruleId: string) {
+  const items = readJson<PendingAutoGuidelineRun[]>(PENDING_AUTO_GUIDELINE_RUNS_KEY, []);
+  const next = items.filter((item) => !(item.contract_id === contractId && item.rule_id === ruleId));
+  writeJson(PENDING_AUTO_GUIDELINE_RUNS_KEY, next);
 }
 
 export function listAuditEvents(): AuditEvent[] {

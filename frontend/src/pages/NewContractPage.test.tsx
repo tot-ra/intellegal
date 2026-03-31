@@ -94,4 +94,41 @@ describe("NewContractPage", () => {
       expect.any(Object)
     );
   });
+
+  it("queues automatic guideline rules for the new contract", async () => {
+    window.localStorage.setItem(
+      "ldi.guidelineRules",
+      JSON.stringify([
+        {
+          id: "rule-auto",
+          name: "Auto review",
+          rule_type: "llm_review",
+          instructions: "Check payment terms.",
+          auto_run_on_new_contract: true,
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z"
+        }
+      ])
+    );
+
+    renderPage();
+
+    const file = new File(["pdf-content"], "vendor-agreement.pdf", { type: "application/pdf" });
+    const fileInput = document.querySelector('input[type="file"]');
+    if (!(fileInput instanceof HTMLInputElement)) {
+      throw new Error("Expected file input to be present.");
+    }
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    fireEvent.click(screen.getByRole("button", { name: "Create Contract" }));
+
+    await waitFor(() => {
+      expect(JSON.parse(window.localStorage.getItem("ldi.pendingAutoGuidelineRuns") ?? "[]")).toEqual([
+        expect.objectContaining({
+          contract_id: "contract-1",
+          rule_id: "rule-auto"
+        })
+      ]);
+    });
+  });
 });

@@ -1,6 +1,6 @@
 import { type DragEvent, type FormEvent, type KeyboardEvent, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { addAuditEvent } from "../app/localState";
+import { addAuditEvent, enqueuePendingAutoGuidelineRuns, listStoredGuidelineRules } from "../app/localState";
 import {
   createSingleFileContract,
   isSupportedContractFile,
@@ -98,6 +98,9 @@ export function BatchImportContractsPage() {
     setItems((prev) => prev.map((item) => ({ ...item, state: "queued", message: undefined, contractId: undefined })));
 
     const tags = parseTagsInput(tagsInput);
+    const autoRunRuleIds = listStoredGuidelineRules()
+      .filter((rule) => rule.auto_run_on_new_contract)
+      .map((rule) => rule.id);
 
     for (const item of items) {
       setItems((prev) =>
@@ -106,6 +109,9 @@ export function BatchImportContractsPage() {
 
       try {
         const result = await createSingleFileContract(item.file, tags);
+        if (result.uploadedDocument && autoRunRuleIds.length > 0) {
+          enqueuePendingAutoGuidelineRuns(result.contract.id, autoRunRuleIds);
+        }
         setItems((prev) =>
           prev.map((entry) =>
             entry.key === item.key
@@ -114,7 +120,9 @@ export function BatchImportContractsPage() {
                   state: result.processingIssue ? "warning" : "success",
                   message: result.processingIssue
                     ? "Contract created, but text processing needs attention."
-                    : "Contract created.",
+                    : autoRunRuleIds.length > 0
+                      ? `Contract created. ${autoRunRuleIds.length} automatic guideline check(s) queued.`
+                      : "Contract created.",
                   contractId: result.contract.id
                 }
               : entry
