@@ -318,7 +318,7 @@ Endpoints:
 
 </details>
 
-## 5. ⚖️ Stack Decision (Best-of-Breed vs Microsoft)
+## 5. ⚖️ Stack Decision
 
 ### ✅ MVP Stack
 - Frontend: React, TypeScript
@@ -330,16 +330,6 @@ Endpoints:
 - Deployment: Docker Compose (local), Azure-ready containers
 - IaC: Terraform
 
-### 🧪 Evaluation Framing for Interview
-- Primary target: Azure-centric deployment and operations
-- Model providers:
-  - Preferred enterprise path: Azure AI Foundry
-  - Alternative benchmark option: Gemini (quality/cost comparison)
-- Decision criteria:
-  - OCR/extraction quality
-  - Explainability for legal review
-  - Operational complexity
-  - Cost and latency
 
 ---
 
