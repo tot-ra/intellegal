@@ -21,8 +21,27 @@ jobs:
           go-version-file: go-api/go.mod
       - name: Lint (go vet)
         run: go vet ./...
-      - name: Test
-        run: go test ./...
+      - name: Test unit
+        run: |
+          mkdir -p coverage
+          rm -f coverage/unit.out
+          set -- $(go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... | sed '/^$/d')
+          go test -coverprofile=coverage/unit.out "$@"
+      - name: Test integration
+        run: |
+          mkdir -p coverage
+          rm -f coverage/integration.out
+          set -- $(go list -tags=integration -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... | sed '/^$/d')
+          go test -tags=integration -coverprofile=coverage/integration.out "$@"
+      - name: Merge coverage
+        run: |
+          ../scripts/merge-go-coverprofiles.sh coverage.txt coverage/unit.out coverage/integration.out
+          go tool cover -func=coverage.txt
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: go-api/coverage.txt
       - name: Build
         run: go build ./cmd/server
 

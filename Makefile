@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-.PHONY: help init up down ps logs clean clean-artifacts test test-go test-py test-py-unit test-py-integration test-fe migrate-up migrate-down migrate-version
+.PHONY: help init up down ps logs clean clean-artifacts test test-go test-go-unit test-go-integration test-py test-py-unit test-py-integration test-fe migrate-up migrate-down migrate-version
 
 help:
 	@echo "Targets:"
@@ -12,7 +12,9 @@ help:
 	@echo "  clean  - stop stack and remove volumes"
 	@echo "  clean-artifacts - remove local generated build/cache artifacts"
 	@echo "  test   - run all test suites"
-	@echo "  test-go - run Go API tests"
+	@echo "  test-go - run Go API unit + integration tests with combined coverage"
+	@echo "  test-go-unit - run Go API unit tests with coverage"
+	@echo "  test-go-integration - run Go API integration tests with coverage"
 	@echo "  test-py - run Python AI API unit + integration tests with combined coverage"
 	@echo "  test-py-unit - run Python AI API unit tests with coverage"
 	@echo "  test-py-integration - run Python AI API integration tests with coverage"
@@ -46,12 +48,30 @@ clean-artifacts:
 	find . -type d -name ".pytest_cache" -prune -exec rm -rf {} +
 	find . -type d -name "*.egg-info" -prune -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
-	rm -rf py-ai-api/.venv frontend/dist
+	rm -rf py-ai-api/.venv frontend/dist go-api/coverage go-api/coverage.txt
 
 test: test-go test-py test-fe
 
 test-go:
-	cd go-api && go test ./...
+	$(MAKE) test-go-unit
+	$(MAKE) test-go-integration
+	cd go-api && \
+	../scripts/merge-go-coverprofiles.sh coverage.txt coverage/unit.out coverage/integration.out && \
+	go tool cover -func=coverage.txt
+
+test-go-unit:
+	cd go-api && \
+	mkdir -p coverage && \
+	rm -f coverage/unit.out && \
+	set -- $$(go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... | sed '/^$$/d'); \
+	go test -coverprofile=coverage/unit.out "$$@"
+
+test-go-integration:
+	cd go-api && \
+	mkdir -p coverage && \
+	rm -f coverage/integration.out && \
+	set -- $$(go list -tags=integration -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... | sed '/^$$/d'); \
+	go test -tags=integration -coverprofile=coverage/integration.out "$$@"
 
 test-py:
 	cd py-ai-api && \

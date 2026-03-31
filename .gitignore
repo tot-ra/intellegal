@@ -20,6 +20,8 @@ frontend/dist/
 
 # Build artifacts
 *.out
+go-api/coverage/
+go-api/coverage.txt
 
 # Temporary files
 tmp/
