@@ -1,4 +1,4 @@
-from py_ai_api.analysis import AnalysisResult, AnalysisResultItem
+from py_ai_api.analysis import AnalysisResult, AnalysisResultItem, ContractChatCitation, ContractChatResult
 from fastapi.testclient import TestClient
 
 from py_ai_api.config import get_settings
@@ -363,3 +363,91 @@ def test_search_sections_returns_completed_job_with_result(monkeypatch) -> None:
     payload = response.json()
     assert payload["job_type"] == "search_sections"
     assert payload["result"]["items"][0]["document_id"] == "doc-1"
+
+
+def test_contract_chat_returns_completed_job_with_result(monkeypatch) -> None:
+    client = _client_with_env(monkeypatch, token="shared-secret")
+
+    class _FakeAnalysisPipeline:
+        def answer_contract_question(self, **kwargs) -> ContractChatResult:
+            assert kwargs["contract_id"] == "contract-1"
+            assert kwargs["messages"] == [{"role": "user", "content": "Summarize termination rights."}]
+            assert kwargs["documents"] == [
+                {
+                    "document_id": "doc-1",
+                    "filename": "msa.pdf",
+                    "text": "Contract text",
+                }
+            ]
+            return ContractChatResult(
+                answer="Termination requires thirty days notice.",
+                citations=[
+                    ContractChatCitation(
+                        document_id="doc-1",
+                        snippet_text="Either party may terminate on thirty days written notice.",
+                        reason="Termination clause",
+                    )
+                ],
+            )
+
+    app.dependency_overrides[get_analysis_pipeline] = lambda: _FakeAnalysisPipeline()
+    try:
+        response = client.post(
+            "/internal/v1/chat/contract",
+            headers={"X-Internal-Service-Token": "shared-secret"},
+            json={
+                "job_id": "2d657ed1-3b90-4b91-bb2c-f3d7520d20af",
+                "contract_id": "contract-1",
+                "messages": [{"role": "user", "content": "Summarize termination rights."}],
+                "documents": [
+                    {
+                        "document_id": "doc-1",
+                        "filename": "msa.pdf",
+                        "text": "Contract text",
+                    }
+                ],
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_analysis_pipeline, None)
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["job_type"] == "contract_chat"
+    assert payload["result"]["answer"] == "Termination requires thirty days notice."
+    assert payload["result"]["citations"][0]["document_id"] == "doc-1"
+
+
+def test_contract_chat_returns_structured_error_when_gemini_is_unavailable(monkeypatch) -> None:
+    client = _client_with_env(monkeypatch, token="shared-secret")
+
+    class _FakeAnalysisPipeline:
+        def answer_contract_question(self, **kwargs) -> ContractChatResult:
+            raise RuntimeError("Gemini reviewer is not configured")
+
+    app.dependency_overrides[get_analysis_pipeline] = lambda: _FakeAnalysisPipeline()
+    try:
+        response = client.post(
+            "/internal/v1/chat/contract",
+            headers={"X-Internal-Service-Token": "shared-secret"},
+            json={
+                "job_id": "5db1a250-1cbf-4bd9-a96d-f3c356fb4c84",
+                "contract_id": "contract-1",
+                "messages": [{"role": "user", "content": "Summarize termination rights."}],
+                "documents": [
+                    {
+                        "document_id": "doc-1",
+                        "filename": "msa.pdf",
+                        "text": "Contract text",
+                    }
+                ],
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_analysis_pipeline, None)
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["error"]["code"] == "contract_chat_unavailable"
+    assert payload["error"]["message"] == "Gemini reviewer is not configured"
+    assert payload["error"]["retriable"] is True

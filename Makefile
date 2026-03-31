@@ -55,8 +55,8 @@ test-py:
 	cd py-ai-api && \
 	python3 -m venv .venv && \
 	. .venv/bin/activate && \
-	pip install -e .[dev] >/dev/null && \
-	pytest
+	pip install -e '.[dev]' >/dev/null && \
+	pytest --cov=py_ai_api --cov-report=term-missing
 
 test-fe:
 	cd frontend && if command -v bun >/dev/null 2>&1; then bun install >/dev/null && bun run test; else npm install >/dev/null && npm run test; fi
