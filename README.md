@@ -1,8 +1,9 @@
-![Intelligal Banner](./banner.png)
+<img height="300" src="./banner.png" />
 
 # IntelLegal - Legal Document Intelligence Platform
 
 [![codecov](https://codecov.io/gh/tot-ra/intellegal/graph/badge.svg?token=SXSCERIZWB)](https://codecov.io/gh/tot-ra/intellegal)
+
 
 ## 1. 🎯 Problem and Constraints
 
@@ -26,6 +27,8 @@ This process is currently semi-manual, slow, and hard to scale.
   - Basic end-to-end implementation prototype
 
 ---
+
+<img height="600" alt="Screenshot 2026-04-01 at 00 13 27" src="https://github.com/user-attachments/assets/20bc8c24-24c0-46f8-9d9e-88c35959354a" />
 
 ## 2. 🧩 Product Use Cases, User Stories, and Features
 
