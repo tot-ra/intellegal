@@ -200,7 +200,7 @@ components:
           type: string
         mime_type:
           type: string
-          enum: [application/pdf, image/jpeg, image/png]
+          enum: [application/pdf, image/jpeg, image/png, application/vnd.openxmlformats-officedocument.wordprocessingml.document]
 
     IndexJobRequest:
       type: object

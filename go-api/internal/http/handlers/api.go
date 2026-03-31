@@ -37,8 +37,13 @@ const (
 )
 
 var (
-	uuidRx                 = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
-	validDocumentMimes     = map[string]struct{}{"application/pdf": {}, "image/jpeg": {}, "image/png": {}}
+	uuidRx             = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+	validDocumentMimes = map[string]struct{}{
+		"application/pdf": {},
+		"image/jpeg":      {},
+		"image/png":       {},
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document": {},
+	}
 	validSourceTypes       = map[string]struct{}{"repository": {}, "upload": {}, "api": {}}
 	validDocStatuses       = map[string]struct{}{documentStatusIngested: {}, documentStatusProcessing: {}, documentStatusIndexed: {}, documentStatusFailed: {}}
 	errIdempotencyConflict = errors.New("idempotency conflict")
@@ -483,7 +488,7 @@ func newUUID() string {
 
 func extensionForFilename(filename, mimeType string) string {
 	ext := strings.ToLower(filepath.Ext(strings.TrimSpace(filename)))
-	if ext == ".pdf" || ext == ".jpg" || ext == ".jpeg" || ext == ".png" {
+	if ext == ".pdf" || ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".docx" {
 		return ext
 	}
 
@@ -492,6 +497,9 @@ func extensionForFilename(filename, mimeType string) string {
 	}
 	if mimeType == "image/png" {
 		return ".png"
+	}
+	if mimeType == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" {
+		return ".docx"
 	}
 
 	return ".jpg"

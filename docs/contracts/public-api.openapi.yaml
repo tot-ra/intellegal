@@ -292,7 +292,7 @@ components:
           type: string
         mime_type:
           type: string
-          enum: [application/pdf, image/jpeg, image/png]
+          enum: [application/pdf, image/jpeg, image/png, application/vnd.openxmlformats-officedocument.wordprocessingml.document]
         content_base64:
           type: string
           description: Raw file content encoded as base64.

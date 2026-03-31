@@ -80,7 +80,7 @@ export function NewContractPage() {
     }
     for (const file of files) {
       if (!isSupportedContractFile(file)) {
-        setUploadError("Only PDF, JPEG, and PNG files are supported.");
+        setUploadError("Only PDF, JPEG, PNG, and DOCX files are supported.");
         return;
       }
     }
@@ -111,7 +111,11 @@ export function NewContractPage() {
             contract.id,
             {
               filename: file.name,
-              mime_type: file.type as "application/pdf" | "image/jpeg" | "image/png",
+              mime_type: file.type as
+                | "application/pdf"
+                | "image/jpeg"
+                | "image/png"
+                | "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
               source_type: sourceType,
               tags: tags.length > 0 ? tags : undefined,
               content_base64: contentBase64
@@ -209,7 +213,7 @@ export function NewContractPage() {
                 ref={fileInputRef}
                 className="file-upload-input-hidden"
                 type="file"
-                accept="application/pdf,image/jpeg,image/png"
+                accept="application/pdf,image/jpeg,image/png,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"
                 multiple
                 onChange={(event) => {
                   appendFiles(Array.from(event.target.files ?? []));
@@ -217,7 +221,7 @@ export function NewContractPage() {
                 }}
               />
               <p className="upload-dropzone-title">Drop files here or click to browse</p>
-              <p className="muted">Supports multiple PDF, JPEG, and PNG files.</p>
+              <p className="muted">Supports multiple PDF, JPEG, PNG, and DOCX files.</p>
               <button type="button" className="secondary upload-dropzone-action">
                 Choose Files
               </button>

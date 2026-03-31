@@ -162,6 +162,8 @@ function formatMimeTypeLabel(mimeType: string): string {
       return "JPEG";
     case "image/png":
       return "PNG";
+    case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+      return "DOCX";
     default:
       return mimeType;
   }
@@ -568,8 +570,13 @@ export function ContractEditPage() {
     if (!contractId || newFiles.length === 0) return;
 
     for (const file of newFiles) {
-      if (file.type !== "application/pdf" && file.type !== "image/jpeg" && file.type !== "image/png") {
-        setError("Only PDF, JPEG, and PNG files are supported.");
+      if (
+        file.type !== "application/pdf" &&
+        file.type !== "image/jpeg" &&
+        file.type !== "image/png" &&
+        file.type !== "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      ) {
+        setError("Only PDF, JPEG, PNG, and DOCX files are supported.");
         return;
       }
     }
@@ -582,7 +589,11 @@ export function ContractEditPage() {
         const contentBase64 = await toBase64(file);
         await apiClient.addContractFile(contractId, {
           filename: file.name,
-          mime_type: file.type as "application/pdf" | "image/jpeg" | "image/png",
+          mime_type: file.type as
+            | "application/pdf"
+            | "image/jpeg"
+            | "image/png"
+            | "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
           content_base64: contentBase64
         });
       }
@@ -746,7 +757,7 @@ export function ContractEditPage() {
                 Files
                 <input
                   type="file"
-                  accept="application/pdf,image/jpeg,image/png"
+                  accept="application/pdf,image/jpeg,image/png,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"
                   multiple
                   onChange={(event) => appendFiles(Array.from(event.target.files ?? []))}
                 />

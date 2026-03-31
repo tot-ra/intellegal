@@ -18,6 +18,12 @@ class _FakePDFExtractor:
         ]
 
 
+class _FakeDOCXExtractor:
+    def extract_text(self, payload: bytes) -> str:
+        assert payload == b"docx-bytes"
+        return "  Master   Service  Agreement \r\n\nTerm:\t12 months "
+
+
 @dataclass
 class _FakeOCRExtractor:
     confidence: float = 0.81
@@ -32,7 +38,11 @@ class _FakeOCRExtractor:
 
 
 def test_pdf_extraction_normalizes_text_and_preserves_page_boundaries() -> None:
-    pipeline = ExtractionPipeline(pdf_extractor=_FakePDFExtractor(), ocr_extractor=_FakeOCRExtractor())
+    pipeline = ExtractionPipeline(
+        pdf_extractor=_FakePDFExtractor(),
+        docx_extractor=_FakeDOCXExtractor(),
+        ocr_extractor=_FakeOCRExtractor(),
+    )
 
     result = pipeline.extract_bytes(b"pdf-bytes", "application/pdf")
 
@@ -46,7 +56,11 @@ def test_pdf_extraction_normalizes_text_and_preserves_page_boundaries() -> None:
 
 
 def test_jpeg_ocr_extraction_uses_ocr_confidence_and_metadata() -> None:
-    pipeline = ExtractionPipeline(pdf_extractor=_FakePDFExtractor(), ocr_extractor=_FakeOCRExtractor())
+    pipeline = ExtractionPipeline(
+        pdf_extractor=_FakePDFExtractor(),
+        docx_extractor=_FakeDOCXExtractor(),
+        ocr_extractor=_FakeOCRExtractor(),
+    )
 
     result = pipeline.extract_bytes(b"jpeg-bytes", "image/jpeg")
 
@@ -61,7 +75,11 @@ def test_jpeg_ocr_extraction_uses_ocr_confidence_and_metadata() -> None:
 
 
 def test_png_ocr_extraction_uses_same_ocr_path() -> None:
-    pipeline = ExtractionPipeline(pdf_extractor=_FakePDFExtractor(), ocr_extractor=_FakeOCRExtractor())
+    pipeline = ExtractionPipeline(
+        pdf_extractor=_FakePDFExtractor(),
+        docx_extractor=_FakeDOCXExtractor(),
+        ocr_extractor=_FakeOCRExtractor(),
+    )
 
     result = pipeline.extract_bytes(b"png-bytes", "image/png")
 
@@ -69,6 +87,22 @@ def test_png_ocr_extraction_uses_same_ocr_path() -> None:
     assert len(result.pages) == 1
     assert result.pages[0].source == "ocr"
     assert result.pages[0].text == "Scanned text\nfrom image"
+
+
+def test_docx_extraction_uses_docx_text_path() -> None:
+    pipeline = ExtractionPipeline(
+        pdf_extractor=_FakePDFExtractor(),
+        docx_extractor=_FakeDOCXExtractor(),
+        ocr_extractor=_FakeOCRExtractor(),
+    )
+
+    result = pipeline.extract_bytes(b"docx-bytes", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+    assert result.mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    assert len(result.pages) == 1
+    assert result.pages[0].source == "docx_text"
+    assert result.pages[0].text == "Master Service Agreement\n\nTerm: 12 months"
+    assert result.diagnostics["ocr_used"] is False
 
 
 def test_load_document_bytes_supports_http(monkeypatch) -> None:

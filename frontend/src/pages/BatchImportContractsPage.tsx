@@ -89,7 +89,7 @@ export function BatchImportContractsPage() {
 
     const unsupportedFile = items.find((item) => !isSupportedContractFile(item.file));
     if (unsupportedFile) {
-      setUploadError(`"${unsupportedFile.file.name}" is not supported. Only PDF, JPEG, and PNG files are supported.`);
+      setUploadError(`"${unsupportedFile.file.name}" is not supported. Only PDF, JPEG, PNG, and DOCX files are supported.`);
       return;
     }
 

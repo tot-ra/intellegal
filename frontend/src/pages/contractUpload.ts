@@ -1,6 +1,11 @@
 import { ApiError, apiClient } from "../api/client";
 
-export const SUPPORTED_CONTRACT_MIME_TYPES = ["application/pdf", "image/jpeg", "image/png"] as const;
+export const SUPPORTED_CONTRACT_MIME_TYPES = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+] as const;
 export type SupportedContractMimeType = (typeof SUPPORTED_CONTRACT_MIME_TYPES)[number];
 
 export async function toBase64(file: File): Promise<string> {
@@ -62,7 +67,7 @@ export async function createSingleFileContract(file: File, tags: string[]) {
     throw new Error(`Contract name could not be derived from "${file.name}".`);
   }
   if (!isSupportedContractFile(file)) {
-    throw new Error(`"${file.name}" is not supported. Only PDF, JPEG, and PNG files are supported.`);
+    throw new Error(`"${file.name}" is not supported. Only PDF, JPEG, PNG, and DOCX files are supported.`);
   }
 
   const contract = await apiClient.createContract(

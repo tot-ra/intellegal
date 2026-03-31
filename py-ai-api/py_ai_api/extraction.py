@@ -15,7 +15,8 @@ from urllib.parse import unquote, urlparse
 
 from pydantic import BaseModel, Field
 
-SUPPORTED_MIME_TYPES = {"application/pdf", "image/jpeg", "image/png"}
+DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+SUPPORTED_MIME_TYPES = {"application/pdf", "image/jpeg", "image/png", DOCX_MIME_TYPE}
 
 
 class ExtractionError(Exception):
@@ -53,6 +54,11 @@ class ExtractionResult(BaseModel):
 
 class PDFExtractor(Protocol):
     def extract_pages(self, payload: bytes) -> list[str]:
+        ...
+
+
+class DOCXExtractor(Protocol):
+    def extract_text(self, payload: bytes) -> str:
         ...
 
 
@@ -138,14 +144,49 @@ class TesseractOCRExtractor:
         )
 
 
+class PythonDocxExtractor:
+    def extract_text(self, payload: bytes) -> str:
+        try:
+            from docx import Document
+        except ImportError as exc:  # pragma: no cover - depends on runtime env
+            raise ExtractionError(
+                "DOCX extraction dependency is missing",
+                code="dependency_unavailable",
+                status_code=500,
+                retriable=False,
+                details={"dependency": "python-docx"},
+            ) from exc
+
+        try:
+            document = Document(BytesIO(payload))
+        except Exception as exc:  # pragma: no cover - library/runtime errors
+            raise ExtractionError(
+                "could not parse DOCX input",
+                code="invalid_argument",
+                status_code=400,
+                retriable=False,
+                details={"error": str(exc)},
+            ) from exc
+
+        parts = [paragraph.text for paragraph in document.paragraphs]
+        for table in document.tables:
+            for row in table.rows:
+                cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                if cells:
+                    parts.append(" | ".join(cells))
+        return "\n".join(parts)
+
+
 class ExtractionPipeline:
     def __init__(
         self,
         *,
         pdf_extractor: PDFExtractor | None = None,
+        docx_extractor: DOCXExtractor | None = None,
         ocr_extractor: OCRExtractor | None = None,
     ) -> None:
         self._pdf_extractor = pdf_extractor or PypdfExtractor()
+        self._docx_extractor = docx_extractor or PythonDocxExtractor()
         self._ocr_extractor = ocr_extractor or TesseractOCRExtractor()
 
     def extract_from_uri(self, storage_uri: str, mime_type: str | None = None) -> ExtractionResult:
@@ -167,6 +208,9 @@ class ExtractionPipeline:
             raw_pages = self._pdf_extractor.extract_pages(payload)
             if not raw_pages:
                 raw_pages = [""]
+        elif mime_type == DOCX_MIME_TYPE:
+            source = "docx_text"
+            raw_pages = [self._docx_extractor.extract_text(payload)]
         elif mime_type in {"image/jpeg", "image/png"}:
             source = "ocr"
             ocr_used = True

@@ -164,6 +164,28 @@ func TestCreateDocumentAcceptsPNG(t *testing.T) {
 	}
 }
 
+func TestCreateDocumentAcceptsDOCX(t *testing.T) {
+	api := NewAPI(noopLogger{}, nil, nil, nil)
+
+	resp := performJSONRequest(t, http.MethodPost, "/api/v1/documents", map[string]any{
+		"filename":       "contract.docx",
+		"mime_type":      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		"content_base64": "dGVzdA==",
+	}, api.CreateDocument)
+
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", resp.Code)
+	}
+
+	var body struct {
+		MIMEType string `json:"mime_type"`
+	}
+	decodeJSONBodyInto(t, resp, &body)
+	if body.MIMEType != "application/vnd.openxmlformats-officedocument.wordprocessingml.document" {
+		t.Fatalf("expected DOCX mime type, got %q", body.MIMEType)
+	}
+}
+
 func TestContractSupportsMultipleFilesAndReorder(t *testing.T) {
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 

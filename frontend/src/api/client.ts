@@ -18,7 +18,11 @@ export type CreateDocumentRequest = {
   source_type?: "repository" | "upload" | "api";
   source_ref?: string;
   filename: string;
-  mime_type: "application/pdf" | "image/jpeg" | "image/png";
+  mime_type:
+    | "application/pdf"
+    | "image/jpeg"
+    | "image/png"
+    | "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   content_base64: string;
   tags?: string[];
 };
