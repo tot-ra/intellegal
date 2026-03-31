@@ -19,6 +19,8 @@ type ContractTextSettings = {
   lineHeight: number;
 };
 
+type ContractDisplayMode = "text" | "original";
+
 function readContractTextSettings(): ContractTextSettings {
   return readLocalJson<ContractTextSettings>(CONTRACT_TEXT_SETTINGS_KEY, {
     fontSize: DEFAULT_TEXT_FONT_SIZE,
@@ -67,6 +69,7 @@ export function ContractEditPage() {
   const [textError, setTextError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [displayMode, setDisplayMode] = useState<ContractDisplayMode>("text");
   const [textFontSize, setTextFontSize] = useState(() => readContractTextSettings().fontSize);
   const [textLineHeight, setTextLineHeight] = useState(() => readContractTextSettings().lineHeight);
   const creationNotice = searchParams.get("notice")?.trim() ?? "";
@@ -438,37 +441,63 @@ export function ContractEditPage() {
         <section className="panel contract-text-panel" style={contractTextStyle}>
           <div className="contract-text-panel-header">
             <div>
-              <h3>Contract Text</h3>
-              <p className="muted">Combined extracted text from all files, shown in reading order.</p>
+              <h3>{displayMode === "text" ? "Contract Text" : "Original Files"}</h3>
+              <p className="muted">
+                {displayMode === "text"
+                  ? "Combined extracted text from all files, shown in reading order."
+                  : "Original uploaded files shown inline in contract order."}
+              </p>
             </div>
             <div className="contract-text-controls" aria-label="Contract text display controls">
-              <label className="contract-text-control">
-                <span>Size {textFontSize.toFixed(2)}rem</span>
-                <input
-                  type="range"
-                  min="0.9"
-                  max="1.5"
-                  step="0.05"
-                  value={textFontSize}
-                  onChange={(event) => setTextFontSize(Number(event.target.value))}
-                />
-              </label>
-              <label className="contract-text-control">
-                <span>Line {textLineHeight.toFixed(2)}</span>
-                <input
-                  type="range"
-                  min="0.9"
-                  max="2.4"
-                  step="0.1"
-                  value={textLineHeight}
-                  onChange={(event) => setTextLineHeight(Number(event.target.value))}
-                />
-              </label>
+              <div className="segmented-control" role="tablist" aria-label="Contract display mode">
+                <button
+                  type="button"
+                  className={displayMode === "text" ? "is-active" : ""}
+                  aria-pressed={displayMode === "text"}
+                  onClick={() => setDisplayMode("text")}
+                >
+                  Text
+                </button>
+                <button
+                  type="button"
+                  className={displayMode === "original" ? "is-active" : ""}
+                  aria-pressed={displayMode === "original"}
+                  onClick={() => setDisplayMode("original")}
+                >
+                  Original
+                </button>
+              </div>
+              {displayMode === "text" ? (
+                <>
+                  <label className="contract-text-control">
+                    <span>Size {textFontSize.toFixed(2)}rem</span>
+                    <input
+                      type="range"
+                      min="0.9"
+                      max="1.5"
+                      step="0.05"
+                      value={textFontSize}
+                      onChange={(event) => setTextFontSize(Number(event.target.value))}
+                    />
+                  </label>
+                  <label className="contract-text-control">
+                    <span>Line {textLineHeight.toFixed(2)}</span>
+                    <input
+                      type="range"
+                      min="0.9"
+                      max="2.4"
+                      step="0.1"
+                      value={textLineHeight}
+                      onChange={(event) => setTextLineHeight(Number(event.target.value))}
+                    />
+                  </label>
+                </>
+              ) : null}
             </div>
           </div>
-          {textLoading ? <p className="muted">Loading contract text...</p> : null}
-          {textError ? <p className="error-text">{textError}</p> : null}
-          {!textLoading && !textError ? (
+          {displayMode === "text" && textLoading ? <p className="muted">Loading contract text...</p> : null}
+          {displayMode === "text" && textError ? <p className="error-text">{textError}</p> : null}
+          {displayMode === "text" && !textLoading && !textError ? (
             <>
               {files.length === 0 ? <p className="muted">No files yet, so there is no text to show.</p> : null}
               {files.map((file, index) => {
@@ -483,6 +512,34 @@ export function ContractEditPage() {
                         <p className="word-document-text">{entry.text}</p>
                       ) : (
                         <p className="muted">No extracted text available for this file yet.</p>
+                      )}
+                    </article>
+                  </section>
+                );
+              })}
+            </>
+          ) : null}
+          {displayMode === "original" ? (
+            <>
+              {files.length === 0 ? <p className="muted">No files yet, so there is nothing to preview.</p> : null}
+              {files.map((file, index) => {
+                const contentUrl = apiClient.getDocumentContentUrl(file.id);
+                return (
+                  <section key={file.id} className="word-document-section">
+                    <div className="word-document-label">
+                      {index + 1}. {file.filename}
+                    </div>
+                    <article className="word-document-page original-document-page">
+                      {file.mime_type === "application/pdf" ? (
+                        <iframe
+                          className="original-document-frame"
+                          src={contentUrl}
+                          title={`Original preview for ${file.filename}`}
+                        />
+                      ) : file.mime_type === "image/jpeg" || file.mime_type === "image/png" ? (
+                        <img className="original-document-image" src={contentUrl} alt={file.filename} />
+                      ) : (
+                        <p className="muted">Inline preview is not available for this file type.</p>
                       )}
                     </article>
                   </section>

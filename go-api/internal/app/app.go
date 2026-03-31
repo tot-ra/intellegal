@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"time"
 
@@ -14,18 +13,19 @@ import (
 	"legal-doc-intel/go-api/internal/externalcopy"
 	"legal-doc-intel/go-api/internal/http/handlers"
 	httprouter "legal-doc-intel/go-api/internal/http/router"
+	"legal-doc-intel/go-api/internal/logging"
 	"legal-doc-intel/go-api/internal/storage"
 )
 
 type App struct {
 	cfg     config.Config
-	logger  *slog.Logger
+	logger  logging.Logger
 	server  *http.Server
 	db      *db.Postgres
 	storage storage.Adapter
 }
 
-func New(cfg config.Config, logger *slog.Logger) (*App, error) {
+func New(cfg config.Config, logger logging.Logger) (*App, error) {
 	store, err := storage.NewAdapter(storage.FactoryConfig{
 		Provider:           cfg.StorageProvider,
 		LocalPath:          cfg.LocalStoragePath,

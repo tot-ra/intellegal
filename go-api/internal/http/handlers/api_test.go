@@ -4,16 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	logger "github.com/Gratheon/log-lib-go"
+
 	"legal-doc-intel/go-api/internal/ai"
 	"legal-doc-intel/go-api/internal/http/handlers"
 	"legal-doc-intel/go-api/internal/http/router"
+	"legal-doc-intel/go-api/internal/logging"
 )
 
 type fakeAIClient struct {
@@ -87,9 +88,9 @@ func (f *fakeAIClient) SearchSections(_ context.Context, _ ai.SearchSectionsRequ
 }
 
 func TestDocumentAndCheckFlow(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	api := handlers.NewAPI(logger, &fakeAIClient{}, nil, nil)
-	ts := httptest.NewServer(router.New(logger, api, nil, []string{"http://localhost:3000"}))
+	log := logging.NewDiscard(logger.New(logger.LoggerConfig{}))
+	api := handlers.NewAPI(log, &fakeAIClient{}, nil, nil)
+	ts := httptest.NewServer(router.New(log, api, nil, []string{"http://localhost:3000"}))
 	defer ts.Close()
 
 	docResp := postJSON(t, ts.URL+"/api/v1/documents", map[string]any{

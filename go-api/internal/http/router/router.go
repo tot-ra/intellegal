@@ -2,17 +2,17 @@ package router
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
 	"legal-doc-intel/go-api/internal/http/handlers"
 	"legal-doc-intel/go-api/internal/http/middleware"
+	"legal-doc-intel/go-api/internal/logging"
 )
 
 func New(
-	logger *slog.Logger,
+	logger logging.Logger,
 	api *handlers.API,
 	readinessProbe func(context.Context) error,
 	corsAllowedOrigins []string,
@@ -27,6 +27,7 @@ func New(
 		r.Route("/{document_id}", func(r chi.Router) {
 			r.Get("/", api.GetDocument)
 			r.Delete("/", api.DeleteDocument)
+			r.Get("/content", api.GetDocumentContent)
 			r.Get("/text", api.GetDocumentText)
 		})
 	})

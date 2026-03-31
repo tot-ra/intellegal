@@ -53,6 +53,7 @@ type aiClient interface {
 
 type documentStore interface {
 	Put(ctx context.Context, key string, body io.Reader) (string, error)
+	Get(ctx context.Context, key string) (io.ReadCloser, error)
 	Delete(ctx context.Context, key string) error
 }
 
@@ -94,6 +95,10 @@ type noopDocumentStore struct{}
 
 func (noopDocumentStore) Put(_ context.Context, key string, _ io.Reader) (string, error) {
 	return "file:///" + key, nil
+}
+
+func (noopDocumentStore) Get(_ context.Context, _ string) (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader("")), nil
 }
 
 func (noopDocumentStore) Delete(_ context.Context, _ string) error {

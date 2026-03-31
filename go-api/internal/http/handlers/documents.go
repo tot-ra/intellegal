@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -221,6 +222,37 @@ func (a *API) GetDocumentText(w http.ResponseWriter, r *http.Request) {
 		Text:       text,
 		HasText:    text != "",
 	})
+}
+
+func (a *API) GetDocumentContent(w http.ResponseWriter, r *http.Request) {
+	documentID := pathParam(r, "document_id")
+	if !isUUID(documentID) {
+		writeError(w, http.StatusBadRequest, "invalid_argument", "document_id must be a valid UUID", false, nil)
+		return
+	}
+
+	a.mu.RLock()
+	doc, ok := a.documents[documentID]
+	a.mu.RUnlock()
+	if !ok {
+		writeError(w, http.StatusNotFound, "not_found", "document not found", false, nil)
+		return
+	}
+
+	reader, err := a.store.Get(r.Context(), doc.StorageKey)
+	if err != nil {
+		a.logger.Error("document storage read failed", "document_id", documentID, "error", err)
+		writeError(w, http.StatusBadGateway, "storage_unavailable", "failed to read document asset", true, nil)
+		return
+	}
+	defer reader.Close()
+
+	w.Header().Set("Content-Type", doc.MIMEType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", doc.Filename))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if _, err := io.Copy(w, reader); err != nil {
+		a.logger.Error("document content stream failed", "document_id", documentID, "error", err)
+	}
 }
 
 func (a *API) writeCreateDocumentError(w http.ResponseWriter, err error) {

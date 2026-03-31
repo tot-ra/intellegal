@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
 });
 
 vi.mock("../api/client", async (importOriginal) => {
@@ -91,7 +92,9 @@ vi.mock("../api/client", async (importOriginal) => {
   };
 });
 import { AppShell } from "./AppShell";
+import { apiClient } from "../api/client";
 import { AuditPage } from "../pages/AuditPage";
+import { BatchImportContractsPage } from "../pages/BatchImportContractsPage";
 import { ContractsPage } from "../pages/ContractsPage";
 import { CompareContractsPage } from "../pages/CompareContractsPage";
 import { DashboardPage } from "../pages/DashboardPage";
@@ -113,6 +116,7 @@ function renderAt(path: string) {
           { index: true, element: <DashboardPage /> },
           { path: "search", element: <SearchPage /> },
           { path: "contracts", element: <ContractsPage /> },
+          { path: "contracts/import", element: <BatchImportContractsPage /> },
           { path: "contracts/new", element: <NewContractPage /> },
           { path: "contracts/compare", element: <CompareContractsPage /> },
           { path: "guidelines", element: <GuidelinesPage /> },
@@ -150,18 +154,164 @@ describe("router", () => {
 
     expect(screen.getByRole("heading", { level: 2, name: "Guidelines" })).toBeVisible();
     expect(screen.getByText("Rules")).toBeVisible();
-    expect(screen.getByText("Executions")).toBeVisible();
+    expect(screen.getByText("Guideline Checks")).toBeVisible();
     expect(screen.getByRole("link", { name: "New Rule" })).toHaveAttribute("href", "/guidelines/new");
+    expect(screen.getByRole("link", { name: "Run Guideline" })).toHaveAttribute("href", "/guidelines/run");
+  });
+
+  it("shows guideline check emoji and created date in the run list", () => {
+    window.localStorage.setItem(
+      "ldi.checkRuns",
+      JSON.stringify([
+        {
+          check_id: "check-1",
+          check_type: "clause_presence",
+          execution_mode: "remote",
+          status: "completed",
+          requested_at: "2026-01-02T03:04:05Z",
+          rule_name: "Payment terms"
+        }
+      ])
+    );
+
+    renderAt("/guidelines");
+
+    expect(screen.getByText("✅")).toBeVisible();
+    expect(screen.getByText("Payment terms")).toBeVisible();
+    expect(screen.getByText(/Created 02\.01\.2026/)).toBeVisible();
+  });
+
+  it("shows checked contract names as clickable links in guideline results", async () => {
+    window.localStorage.setItem(
+      "ldi.checkRuns",
+      JSON.stringify([
+        {
+          check_id: "check-1",
+          check_type: "clause_presence",
+          execution_mode: "remote",
+          status: "completed",
+          requested_at: "2026-01-02T03:04:05Z",
+          rule_name: "Payment terms"
+        }
+      ])
+    );
+
+    vi.mocked(apiClient.getCheckRun).mockResolvedValueOnce({
+      check_id: "check-1",
+      status: "completed",
+      check_type: "clause_presence",
+      requested_at: "2026-01-02T03:04:05Z"
+    });
+    vi.mocked(apiClient.getCheckResults).mockResolvedValueOnce({
+      check_id: "check-1",
+      status: "completed",
+      items: [
+        {
+          document_id: "doc-1",
+          outcome: "missing",
+          confidence: 0.87,
+          summary: "Missing payment clause."
+        }
+      ]
+    });
+
+    renderAt("/guidelines?checkId=check-1");
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "Alpha" })).toHaveAttribute("href", "/contracts/contract-1/edit");
+    });
+  });
+
+  it("applies outcome row highlighting in guideline results", async () => {
+    window.localStorage.setItem(
+      "ldi.checkRuns",
+      JSON.stringify([
+        {
+          check_id: "check-1",
+          check_type: "clause_presence",
+          execution_mode: "remote",
+          status: "completed",
+          requested_at: "2026-01-02T03:04:05Z",
+          rule_name: "Payment terms"
+        }
+      ])
+    );
+
+    vi.mocked(apiClient.getCheckRun).mockResolvedValueOnce({
+      check_id: "check-1",
+      status: "completed",
+      check_type: "clause_presence",
+      requested_at: "2026-01-02T03:04:05Z"
+    });
+    vi.mocked(apiClient.getCheckResults).mockResolvedValueOnce({
+      check_id: "check-1",
+      status: "completed",
+      items: [
+        {
+          document_id: "doc-1",
+          outcome: "match",
+          confidence: 1,
+          summary: "Clause found."
+        },
+        {
+          document_id: "doc-2",
+          outcome: "missing",
+          confidence: 0.42,
+          summary: "Missing payment clause."
+        }
+      ]
+    });
+
+    renderAt("/guidelines?checkId=check-1");
+
+    await waitFor(() => {
+      expect(screen.getByText("Clause found.").closest("tr")).toHaveClass("guideline-result-row-match");
+      expect(screen.getByText("Missing payment clause.").closest("tr")).toHaveClass("guideline-result-row-missing");
+    });
+  });
+
+  it("deletes a guideline rule from the list view", () => {
+    window.localStorage.setItem(
+      "ldi.guidelineRules",
+      JSON.stringify([
+        {
+          id: "rule-1",
+          name: "Payment terms",
+          rule_type: "llm_review",
+          instructions: "Confirm the contract clearly defines payment terms.",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z"
+        }
+      ])
+    );
+
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderAt("/guidelines");
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(screen.queryByText("Payment terms")).not.toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem("ldi.guidelineRules") ?? "[]")).toEqual([]);
+
+    confirmSpy.mockRestore();
   });
 
   it("renders dedicated guideline creation route", () => {
     renderAt("/guidelines/new");
 
     expect(screen.getByRole("heading", { level: 2, name: "New Guideline Rule" })).toBeVisible();
-    expect(screen.getByText("Rule Details")).toBeVisible();
     expect(screen.getByLabelText("Rule Name")).toBeVisible();
     expect(screen.getByLabelText("Rule Instructions")).toBeVisible();
     expect(screen.getByRole("link", { name: "Back to Guidelines" })).toHaveAttribute("href", "/guidelines");
+  });
+
+  it("renders dedicated batch contract import route", () => {
+    renderAt("/contracts/import");
+
+    expect(screen.getByRole("heading", { level: 2, name: "Batch Import Contracts" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Import Contracts" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Back to Contracts" })).toHaveAttribute("href", "/contracts");
   });
 
   it("renders dedicated guideline execution route", () => {
@@ -170,13 +320,77 @@ describe("router", () => {
     expect(screen.getByRole("heading", { level: 2, name: "Run Guideline" })).toBeVisible();
   });
 
+  it("runs a strict keyword guideline locally", async () => {
+    window.localStorage.setItem(
+      "ldi.guidelineRules",
+      JSON.stringify([
+        {
+          id: "rule-keyword",
+          name: "Keyword rule",
+          rule_type: "keyword_match",
+          instructions: "Must contain: payment terms",
+          required_terms: ["payment terms"],
+          forbidden_terms: [],
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z"
+        }
+      ])
+    );
+    vi.mocked(apiClient.getDocumentText).mockResolvedValue({
+      document_id: "doc-1",
+      filename: "alpha.pdf",
+      text: "This contract includes payment terms.",
+      has_text: true
+    });
+
+    renderAt("/guidelines/run");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Run Guideline" }));
+
+    expect(await screen.findByRole("heading", { level: 2, name: "Guidelines" })).toBeVisible();
+    expect(await screen.findByText("Strict keyword check")).toBeVisible();
+    expect(screen.getByText("Flagged items: 0")).toBeVisible();
+  });
+
+  it("matches strict keywords regardless of case and collapsed whitespace", async () => {
+    window.localStorage.setItem(
+      "ldi.guidelineRules",
+      JSON.stringify([
+        {
+          id: "rule-keyword",
+          name: "Keyword rule",
+          rule_type: "keyword_match",
+          instructions: "Must contain: payment terms",
+          required_terms: ["Payment Terms"],
+          forbidden_terms: [],
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z"
+        }
+      ])
+    );
+    vi.mocked(apiClient.getDocumentText).mockResolvedValue({
+      document_id: "doc-1",
+      filename: "alpha.pdf",
+      text: "This contract includes PAYMENT\n   TERMS in section 4.",
+      has_text: true
+    });
+
+    renderAt("/guidelines/run");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Run Guideline" }));
+
+    expect(await screen.findByRole("heading", { level: 2, name: "Guidelines" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: /Keyword rule/i }));
+    expect(screen.getByText("Flagged items: 0")).toBeVisible();
+  });
+
   it("opens guideline creation from selected contracts", async () => {
     renderAt("/contracts");
 
     const alphaCheckbox = await screen.findByRole("checkbox", { name: "Select Alpha" });
     fireEvent.click(alphaCheckbox);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Run Guideline" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Check Guidelines" }));
 
     expect(await screen.findByRole("heading", { level: 2, name: "Run Guideline" })).toBeVisible();
     await waitFor(() => {
@@ -194,7 +408,7 @@ describe("router", () => {
     renderAt("/results?checkId=00000000-0000-4000-8000-000000000000");
 
     expect(await screen.findByRole("heading", { level: 2, name: "Guidelines" })).toBeVisible();
-    expect(screen.getByText("Executions")).toBeVisible();
+    expect(screen.getByText("Guideline Checks")).toBeVisible();
   });
 
   it("renders not found route for unknown paths", () => {

@@ -2,14 +2,15 @@ package router
 
 import (
 	"context"
-	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	logger "github.com/Gratheon/log-lib-go"
+
 	"legal-doc-intel/go-api/internal/ai"
 	"legal-doc-intel/go-api/internal/http/handlers"
+	"legal-doc-intel/go-api/internal/logging"
 )
 
 type mockAIClient struct{}
@@ -31,8 +32,9 @@ func (mockAIClient) SearchSections(_ context.Context, _ ai.SearchSectionsRequest
 }
 
 func TestHealthEndpoint(t *testing.T) {
-	api := handlers.NewAPI(slog.New(slog.NewJSONHandler(io.Discard, nil)), mockAIClient{}, nil, nil)
-	handler := New(slog.New(slog.NewJSONHandler(io.Discard, nil)), api, nil, []string{"http://localhost:3000"})
+	log := logging.NewDiscard(logger.New(logger.LoggerConfig{}))
+	api := handlers.NewAPI(log, mockAIClient{}, nil, nil)
+	handler := New(log, api, nil, []string{"http://localhost:3000"})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
 	w := httptest.NewRecorder()
@@ -49,8 +51,9 @@ func TestHealthEndpoint(t *testing.T) {
 }
 
 func TestReadinessEndpoint(t *testing.T) {
-	api := handlers.NewAPI(slog.New(slog.NewJSONHandler(io.Discard, nil)), mockAIClient{}, nil, nil)
-	handler := New(slog.New(slog.NewJSONHandler(io.Discard, nil)), api, nil, []string{"http://localhost:3000"})
+	log := logging.NewDiscard(logger.New(logger.LoggerConfig{}))
+	api := handlers.NewAPI(log, mockAIClient{}, nil, nil)
+	handler := New(log, api, nil, []string{"http://localhost:3000"})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/readiness", nil)
 	w := httptest.NewRecorder()
@@ -63,9 +66,10 @@ func TestReadinessEndpoint(t *testing.T) {
 }
 
 func TestReadinessEndpointUnavailable(t *testing.T) {
-	api := handlers.NewAPI(slog.New(slog.NewJSONHandler(io.Discard, nil)), mockAIClient{}, nil, nil)
+	log := logging.NewDiscard(logger.New(logger.LoggerConfig{}))
+	api := handlers.NewAPI(log, mockAIClient{}, nil, nil)
 	handler := New(
-		slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		log,
 		api,
 		func(_ context.Context) error { return context.DeadlineExceeded },
 		[]string{"http://localhost:3000"},

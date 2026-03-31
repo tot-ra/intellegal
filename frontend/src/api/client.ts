@@ -275,6 +275,10 @@ export class ApiClient {
     );
   }
 
+  getDocumentContentUrl(documentId: string) {
+    return `${this.baseUrl}/api/v1/documents/${encodeURIComponent(documentId)}/content`;
+  }
+
   deleteDocument(documentId: string) {
     return this.request<void>("DELETE", `/api/v1/documents/${encodeURIComponent(documentId)}`);
   }

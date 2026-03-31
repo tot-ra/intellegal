@@ -129,6 +129,14 @@ describe("ApiClient", () => {
     );
   });
 
+  it("builds document content url for inline previews", () => {
+    const client = new ApiClient("http://localhost:8080");
+
+    expect(client.getDocumentContentUrl("00000000-0000-4000-8000-000000000001")).toBe(
+      "http://localhost:8080/api/v1/documents/00000000-0000-4000-8000-000000000001/content"
+    );
+  });
+
   it("sends patch request for updateContract", async () => {
     const fetchFn = vi.fn(async () =>
       new Response(

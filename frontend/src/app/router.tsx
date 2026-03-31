@@ -1,6 +1,7 @@
 import { Navigate, createBrowserRouter } from "react-router-dom";
 import { AppShell } from "./AppShell";
 import { AuditPage } from "../pages/AuditPage";
+import { BatchImportContractsPage } from "../pages/BatchImportContractsPage";
 import { ContractsPage } from "../pages/ContractsPage";
 import { CompareContractsPage } from "../pages/CompareContractsPage";
 import { ContractEditPage } from "../pages/ContractEditPage";
@@ -22,6 +23,7 @@ export const router = createBrowserRouter([
       { index: true, element: <DashboardPage /> },
       { path: "search", element: <SearchPage /> },
       { path: "contracts", element: <ContractsPage /> },
+      { path: "contracts/import", element: <BatchImportContractsPage /> },
       { path: "contracts/new", element: <NewContractPage /> },
       { path: "contracts/files/:documentId", element: <ContractViewPage /> },
       { path: "contracts/:contractId/edit", element: <ContractEditPage /> },

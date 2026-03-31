@@ -21,6 +21,9 @@ func (noopLogger) Warn(string, ...any)  {}
 func (noopLogger) Error(string, ...any) {}
 
 type stubDocumentStore struct {
+	getBody      []byte
+	getErr       error
+	gotGetKeys   []string
 	deleteErr    error
 	deletedKeys  []string
 	deletedCalls int
@@ -63,6 +66,14 @@ func (s *searchCapturingAIClient) SearchSections(_ context.Context, req ai.Searc
 
 func (s *stubDocumentStore) Put(_ context.Context, key string, _ io.Reader) (string, error) {
 	return "file:///" + key, nil
+}
+
+func (s *stubDocumentStore) Get(_ context.Context, key string) (io.ReadCloser, error) {
+	s.gotGetKeys = append(s.gotGetKeys, key)
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
+	return io.NopCloser(bytes.NewReader(s.getBody)), nil
 }
 
 func (s *stubDocumentStore) Delete(_ context.Context, key string) error {
@@ -227,6 +238,68 @@ func TestContractSupportsMultipleFilesAndReorder(t *testing.T) {
 	decodeJSONBodyInto(t, reorderResp, &reordered)
 	if len(reordered.Files) != 2 || reordered.Files[0].ID != secondFileID || reordered.Files[1].ID != firstFileID {
 		t.Fatalf("unexpected reordered file order: %#v", reordered.Files)
+	}
+}
+
+func TestGetDocumentContentStreamsOriginalFile(t *testing.T) {
+	store := &stubDocumentStore{getBody: []byte("%PDF-test")}
+	api := NewAPI(noopLogger{}, nil, store, nil)
+
+	documentID := "00000000-0000-4000-8000-000000000010"
+	api.documents[documentID] = document{
+		ID:         documentID,
+		Filename:   "contract.pdf",
+		MIMEType:   "application/pdf",
+		StorageKey: "documents/contract.pdf",
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/documents/"+documentID+"/content", nil)
+	req.SetPathValue("document_id", documentID)
+	resp := httptest.NewRecorder()
+
+	api.GetDocumentContent(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.Code)
+	}
+	if got := resp.Header().Get("Content-Type"); got != "application/pdf" {
+		t.Fatalf("expected application/pdf content type, got %q", got)
+	}
+	if got := resp.Header().Get("Content-Disposition"); got != `inline; filename="contract.pdf"` {
+		t.Fatalf("unexpected content disposition: %q", got)
+	}
+	if body := resp.Body.String(); body != "%PDF-test" {
+		t.Fatalf("unexpected body: %q", body)
+	}
+	if len(store.gotGetKeys) != 1 || store.gotGetKeys[0] != "documents/contract.pdf" {
+		t.Fatalf("unexpected storage keys: %#v", store.gotGetKeys)
+	}
+}
+
+func TestGetDocumentContentReturnsBadGatewayWhenStorageReadFails(t *testing.T) {
+	store := &stubDocumentStore{getErr: errors.New("boom")}
+	api := NewAPI(noopLogger{}, nil, store, nil)
+
+	documentID := "00000000-0000-4000-8000-000000000011"
+	api.documents[documentID] = document{
+		ID:         documentID,
+		Filename:   "scan.png",
+		MIMEType:   "image/png",
+		StorageKey: "documents/scan.png",
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/documents/"+documentID+"/content", nil)
+	req.SetPathValue("document_id", documentID)
+	resp := httptest.NewRecorder()
+
+	api.GetDocumentContent(resp, req)
+
+	if resp.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", resp.Code)
+	}
+	body := decodeJSONBody(t, resp)
+	if body.Error.Code != "storage_unavailable" {
+		t.Fatalf("expected storage_unavailable error code, got %q", body.Error.Code)
 	}
 }
 

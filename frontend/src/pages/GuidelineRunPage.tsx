@@ -1,7 +1,18 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { addAuditEvent, listStoredGuidelineRules, upsertStoredRun, type StoredGuidelineRule } from "../app/localState";
-import { apiClient, type DocumentResponse } from "../api/client";
+import {
+  addAuditEvent,
+  listStoredGuidelineRules,
+  setStoredResults,
+  upsertStoredRun,
+  type StoredGuidelineRule
+} from "../app/localState";
+import { apiClient, type CheckResultItem, type DocumentResponse } from "../api/client";
+import {
+  describeGuidelineRule,
+  matchesKeywordTerm,
+  normalizeGuidelineRule
+} from "../app/guidelineRules";
 
 type Scope = "all" | "selected";
 
@@ -92,37 +103,112 @@ export function GuidelineRunPage() {
 
     try {
       const documentIds = scope === "selected" ? selectedIds : undefined;
-      const idempotencyKey = globalThis.crypto?.randomUUID?.() ?? `check-${Date.now()}`;
-      const response = await apiClient.startClausePresenceCheck(
-        {
-          document_ids: documentIds,
-          required_clause_text: selectedRule.instructions
-        },
-        { idempotencyKey }
-      );
+      const normalizedRule = normalizeGuidelineRule(selectedRule);
 
-      upsertStoredRun({
-        check_id: response.check_id,
-        check_type: response.check_type,
-        status: response.status,
-        requested_at: new Date().toISOString(),
-        rule_id: selectedRule.id,
-        rule_name: selectedRule.name,
-        rule_text: selectedRule.instructions
-      });
+      if (normalizedRule.rule_type === "keyword_match") {
+        const allDocuments =
+          documents.length > 0 ? documents : (await apiClient.listDocuments({ limit: 200, offset: 0 })).items;
+        const targetDocuments =
+          scope === "selected" ? allDocuments.filter((document) => selectedIds.includes(document.id)) : allDocuments;
+        const resultItems: CheckResultItem[] = await Promise.all(
+          targetDocuments.map(async (document) => {
+            const response = await apiClient.getDocumentText(document.id);
+            const missingTerms = normalizedRule.required_terms.filter((term) => !matchesKeywordTerm(response.text, term));
+            const forbiddenMatches = normalizedRule.forbidden_terms.filter((term) =>
+              matchesKeywordTerm(response.text, term)
+            );
+            const passed = missingTerms.length === 0 && forbiddenMatches.length === 0;
+            const summaryParts: string[] = [];
 
-      addAuditEvent({
-        type: "check.started",
-        message: `Started guideline "${selectedRule.name}"`,
-        metadata: {
+            if (missingTerms.length > 0) {
+              summaryParts.push(`Missing: ${missingTerms.join(", ")}`);
+            }
+            if (forbiddenMatches.length > 0) {
+              summaryParts.push(`Forbidden matches: ${forbiddenMatches.join(", ")}`);
+            }
+            if (summaryParts.length === 0) {
+              summaryParts.push("All strict keyword checks passed.");
+            }
+
+            return {
+              document_id: document.id,
+              outcome: passed ? "match" : "missing",
+              confidence: 1,
+              summary: summaryParts.join(". "),
+              evidence: []
+            } satisfies CheckResultItem;
+          })
+        );
+
+        const checkId = `local-keyword-${Date.now()}`;
+        const requestedAt = new Date().toISOString();
+
+        upsertStoredRun({
+          check_id: checkId,
+          check_type: "clause_presence",
+          execution_mode: "local",
+          status: "completed",
+          requested_at: requestedAt,
+          finished_at: requestedAt,
+          rule_id: normalizedRule.id,
+          rule_name: normalizedRule.name,
+          rule_type: normalizedRule.rule_type,
+          rule_text: describeGuidelineRule(normalizedRule)
+        });
+        addAuditEvent({
+          type: "check.started",
+          message: `Started guideline "${normalizedRule.name}"`,
+          metadata: {
+            check_id: checkId,
+            scope,
+            document_count: String(targetDocuments.length),
+            rule_name: normalizedRule.name
+          }
+        });
+
+        setStoredResults({
+          check_id: checkId,
+          status: "completed",
+          items: resultItems,
+          updated_at: requestedAt
+        });
+
+        navigate(`/guidelines?checkId=${encodeURIComponent(checkId)}`);
+      } else {
+        const idempotencyKey = globalThis.crypto?.randomUUID?.() ?? `check-${Date.now()}`;
+        const response = await apiClient.startClausePresenceCheck(
+          {
+            document_ids: documentIds,
+            required_clause_text: normalizedRule.instructions
+          },
+          { idempotencyKey }
+        );
+
+        upsertStoredRun({
           check_id: response.check_id,
-          scope,
-          document_count: String(documentIds?.length ?? documents.length),
-          rule_name: selectedRule.name
-        }
-      });
+          check_type: response.check_type,
+          execution_mode: "remote",
+          status: response.status,
+          requested_at: new Date().toISOString(),
+          rule_id: normalizedRule.id,
+          rule_name: normalizedRule.name,
+          rule_type: normalizedRule.rule_type,
+          rule_text: describeGuidelineRule(normalizedRule)
+        });
 
-      navigate(`/guidelines?checkId=${encodeURIComponent(response.check_id)}`);
+        addAuditEvent({
+          type: "check.started",
+          message: `Started guideline "${normalizedRule.name}"`,
+          metadata: {
+            check_id: response.check_id,
+            scope,
+            document_count: String(documentIds?.length ?? documents.length),
+            rule_name: normalizedRule.name
+          }
+        });
+
+        navigate(`/guidelines?checkId=${encodeURIComponent(response.check_id)}`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start guideline.");
     } finally {
@@ -159,9 +245,8 @@ export function GuidelineRunPage() {
       </header>
 
       <form className="panel" onSubmit={startRun}>
-        <div className="wizard-steps guideline-wizard">
-          <div className="step">
-            <strong>Step 1</strong>
+        <div className="guideline-form">
+          <div className="form-grid guideline-form-grid">
             <label className="guideline-field">
               <span className="field-label">Scope</span>
               <select value={scope} onChange={(event) => setScope(event.target.value as Scope)}>
@@ -185,9 +270,8 @@ export function GuidelineRunPage() {
             ) : null}
           </div>
 
-          <div className="step">
-            <strong>Step 2</strong>
-            {rules.length > 0 ? (
+          {rules.length > 0 ? (
+            <div className="form-grid guideline-form-grid">
               <label className="guideline-field">
                 <span className="field-label">Guideline Rule</span>
                 <select value={selectedRule?.id ?? ""} onChange={(event) => setSelectedRuleId(event.target.value)}>
@@ -198,20 +282,17 @@ export function GuidelineRunPage() {
                   ))}
                 </select>
               </label>
-            ) : (
-              <p className="muted">
-                No guideline rules yet. Create a rule first so you can run it against contracts.
-              </p>
-            )}
-          </div>
+            </div>
+          ) : (
+            <p className="muted">
+              No guideline rules yet. Create a rule first so you can run it against contracts.
+            </p>
+          )}
 
           {selectedRule ? (
-            <div className="step">
-              <strong>Step 3</strong>
-              <div className="guideline-type-explainer">
-                <strong>{selectedRule.name}</strong>
-                <p>{selectedRule.instructions}</p>
-              </div>
+            <div className="guideline-type-explainer">
+              <strong>{selectedRule.name}</strong>
+              <p>{describeGuidelineRule(selectedRule)}</p>
             </div>
           ) : null}
         </div>

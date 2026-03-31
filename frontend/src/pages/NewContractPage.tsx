@@ -1,37 +1,14 @@
 import { type DragEvent, type FormEvent, type KeyboardEvent, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ApiError, apiClient } from "../api/client";
+import { apiClient } from "../api/client";
 import { addAuditEvent } from "../app/localState";
-
-async function toBase64(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer();
-  let binary = "";
-  const bytes = new Uint8Array(buffer);
-
-  for (const value of bytes) {
-    binary += String.fromCharCode(value);
-  }
-
-  return btoa(binary);
-}
-
-function deriveContractNameFromFile(file: File | undefined): string {
-  if (!file) {
-    return "";
-  }
-
-  const trimmedName = file.name.trim();
-  if (trimmedName.length === 0) {
-    return "";
-  }
-
-  const extensionIndex = trimmedName.lastIndexOf(".");
-  if (extensionIndex <= 0) {
-    return trimmedName;
-  }
-
-  return trimmedName.slice(0, extensionIndex).trim() || trimmedName;
-}
+import {
+  deriveContractNameFromFile,
+  isRecoverableProcessingError,
+  isSupportedContractFile,
+  parseTagsInput,
+  toBase64
+} from "./contractUpload";
 
 export function NewContractPage() {
   const navigate = useNavigate();
@@ -102,7 +79,7 @@ export function NewContractPage() {
       return;
     }
     for (const file of files) {
-      if (file.type !== "application/pdf" && file.type !== "image/jpeg" && file.type !== "image/png") {
+      if (!isSupportedContractFile(file)) {
         setUploadError("Only PDF, JPEG, and PNG files are supported.");
         return;
       }
@@ -114,14 +91,7 @@ export function NewContractPage() {
     let createdContractId: string | null = null;
 
     try {
-      const tags = Array.from(
-        new Set(
-          tagsInput
-            .split(",")
-            .map((tag) => tag.trim())
-            .filter((tag) => tag.length > 0)
-        )
-      );
+      const tags = parseTagsInput(tagsInput);
       const contract = await apiClient.createContract(
         {
           name: resolvedContractName,
@@ -148,11 +118,7 @@ export function NewContractPage() {
             { idempotencyKey: globalThis.crypto?.randomUUID?.() ?? `upload-${Date.now()}-${file.name}` }
           );
         } catch (err) {
-          if (
-            err instanceof ApiError &&
-            err.code === "upstream_unavailable" &&
-            (err.message === "failed to extract document text" || err.message === "failed to index document text")
-          ) {
+          if (isRecoverableProcessingError(err)) {
             processingFailureCount += 1;
             continue;
           }
@@ -199,6 +165,7 @@ export function NewContractPage() {
 
       <form className="panel" onSubmit={uploadDocument}>
         <h3>Upload Contract</h3>
+        <p className="muted">Use this when several files belong to one contract. For one-file-per-contract imports, use Batch Import.</p>
         <div className="form-grid form-grid-single-column">
           <label>
             Contract Name (optional)

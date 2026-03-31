@@ -239,15 +239,15 @@ export function ContractsPage() {
         <div className="page-actions">
           {selectedContractIds.length > 0 ? (
             <button type="button" onClick={startGuidelineForSelection} disabled={selectedDocumentIds.length === 0}>
-              Run Guideline
+              Check Guidelines
             </button>
           ) : null}
           <button type="button" className="secondary" onClick={compareSelected} disabled={selectedContractIds.length !== 2}>
             Compare Selected
           </button>
-          <button type="button" className="secondary" onClick={() => void loadDocuments()}>
-            Refresh
-          </button>
+          <Link to="/contracts/import" className="button-link secondary">
+            Batch Import
+          </Link>
           <Link to="/contracts/new" className="button-link">
             New Contract
           </Link>

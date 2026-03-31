@@ -61,8 +61,8 @@ func TestLoadParsesLogLevel(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	if cfg.LogLevel.String() != "DEBUG" {
-		t.Fatalf("expected DEBUG log level, got %s", cfg.LogLevel.String())
+	if cfg.LogLevel != "debug" {
+		t.Fatalf("expected debug log level, got %s", cfg.LogLevel)
 	}
 }
 

@@ -3,11 +3,12 @@ package config
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	logger "github.com/Gratheon/log-lib-go"
 )
 
 const defaultInternalToken = "change-me"
@@ -15,7 +16,7 @@ const defaultInternalToken = "change-me"
 // Config holds runtime configuration for the go-api service.
 type Config struct {
 	Port                 int
-	LogLevel             slog.Level
+	LogLevel             logger.LogLevel
 	ShutdownGracePeriod  time.Duration
 	CORSAllowedOrigins   []string
 	DatabaseURL          string
@@ -40,7 +41,7 @@ type Config struct {
 func Load() (Config, error) {
 	cfg := Config{
 		Port:                 8080,
-		LogLevel:             slog.LevelInfo,
+		LogLevel:             logger.LogLevelInfo,
 		ShutdownGracePeriod:  10 * time.Second,
 		CORSAllowedOrigins:   []string{"http://localhost:3000", "http://127.0.0.1:3000"},
 		DatabasePingTimeout:  5 * time.Second,
@@ -66,13 +67,13 @@ func Load() (Config, error) {
 		level := strings.ToLower(strings.TrimSpace(v))
 		switch level {
 		case "debug":
-			cfg.LogLevel = slog.LevelDebug
+			cfg.LogLevel = logger.LogLevelDebug
 		case "info":
-			cfg.LogLevel = slog.LevelInfo
+			cfg.LogLevel = logger.LogLevelInfo
 		case "warn", "warning":
-			cfg.LogLevel = slog.LevelWarn
+			cfg.LogLevel = logger.LogLevelWarn
 		case "error":
-			cfg.LogLevel = slog.LevelError
+			cfg.LogLevel = logger.LogLevelError
 		default:
 			return Config{}, fmt.Errorf("invalid LOG_LEVEL: %q", v)
 		}

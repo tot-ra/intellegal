@@ -1,14 +1,22 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { addAuditEvent, upsertStoredGuidelineRule } from "../app/localState";
+import {
+  buildKeywordInstructions,
+  parseKeywordTerms,
+  type GuidelineRuleType
+} from "../app/guidelineRules";
 
 export function GuidelineCreatePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [ruleName, setRuleName] = useState("Estonian legal entity");
+  const [ruleType, setRuleType] = useState<GuidelineRuleType>("llm_review");
   const [ruleText, setRuleText] = useState(
     "Check whether the contracting company is clearly identified as an entity operating in the Estonian legal space. Review the company details, legal form, registration references, governing law, and any wording that confirms the company belongs to the Estonian legal framework."
   );
+  const [requiredTermsText, setRequiredTermsText] = useState("osaühing\naktsiaselts");
+  const [forbiddenTermsText, setForbiddenTermsText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,8 +34,16 @@ export function GuidelineCreatePage() {
       return;
     }
 
-    if (ruleText.trim().length < 10) {
+    const requiredTerms = parseKeywordTerms(requiredTermsText);
+    const forbiddenTerms = parseKeywordTerms(forbiddenTermsText);
+
+    if (ruleType === "llm_review" && ruleText.trim().length < 10) {
       setError("Enter rule instructions with at least 10 characters.");
+      return;
+    }
+
+    if (ruleType === "keyword_match" && requiredTerms.length === 0 && forbiddenTerms.length === 0) {
+      setError("Add at least one required or forbidden keyword.");
       return;
     }
 
@@ -40,7 +56,13 @@ export function GuidelineCreatePage() {
       upsertStoredGuidelineRule({
         id: ruleId,
         name: ruleName.trim(),
-        instructions: ruleText.trim(),
+        rule_type: ruleType,
+        instructions:
+          ruleType === "llm_review"
+            ? ruleText.trim()
+            : buildKeywordInstructions(requiredTerms, forbiddenTerms),
+        required_terms: ruleType === "keyword_match" ? requiredTerms : [],
+        forbidden_terms: ruleType === "keyword_match" ? forbiddenTerms : [],
         created_at: now,
         updated_at: now
       });
@@ -84,48 +106,23 @@ export function GuidelineCreatePage() {
         </div>
       </header>
 
-      <section className="panel guideline-info-panel">
-        <h3>How Guideline Rules Work</h3>
-        <p className="muted">
-          A guideline rule captures what should be checked in a contract. Once saved, it can be executed repeatedly
-          against all contracts or a selected subset.
-        </p>
-
-        <div className="guideline-flow">
-          <article className="guideline-flow-step">
-            <strong>1. Name the rule</strong>
-            <p>Give the rule a short title that explains what it verifies.</p>
-          </article>
-          <article className="guideline-flow-step">
-            <strong>2. Describe the check</strong>
-            <p>Write the detailed instructions the system should use when reviewing contract text.</p>
-          </article>
-          <article className="guideline-flow-step">
-            <strong>3. Save for reuse</strong>
-            <p>The rule becomes available in the Guidelines view and can be executed whenever needed.</p>
-          </article>
-          <article className="guideline-flow-step">
-            <strong>4. Execute later</strong>
-            <p>Choose the rule and run it against a specific contract set to produce an execution record.</p>
-          </article>
-        </div>
-      </section>
-
       <form className="panel" onSubmit={startCheck}>
-        <h3>Rule Details</h3>
+        <div className="guideline-form">
+          <label className="guideline-field">
+            <span className="field-label">Rule Name</span>
+            <input value={ruleName} onChange={(event) => setRuleName(event.target.value)} required />
+          </label>
 
-        <div className="wizard-steps guideline-wizard">
-          <div className="step">
-            <strong>Step 1</strong>
+          <div className="form-grid guideline-form-grid">
             <label className="guideline-field">
-              <span className="field-label">Rule Name</span>
-              <input value={ruleName} onChange={(event) => setRuleName(event.target.value)} required />
+              <span className="field-label">Rule Type</span>
+              <select value={ruleType} onChange={(event) => setRuleType(event.target.value as GuidelineRuleType)}>
+                <option value="llm_review">LLM evaluates the whole contract</option>
+                <option value="keyword_match">Strict keyword check</option>
+              </select>
             </label>
-          </div>
 
-          <div className="step">
-            <strong>Step 2</strong>
-            <div className="form-grid guideline-form-grid">
+            {ruleType === "llm_review" ? (
               <label className="guideline-field guideline-field-wide">
                 <span className="field-label">Rule Instructions</span>
                 <textarea
@@ -135,7 +132,35 @@ export function GuidelineCreatePage() {
                   required
                 />
               </label>
-            </div>
+            ) : (
+              <>
+                <label className="guideline-field">
+                  <span className="field-label">Must Contain Words or Phrases</span>
+                  <textarea
+                    value={requiredTermsText}
+                    onChange={(event) => setRequiredTermsText(event.target.value)}
+                    rows={6}
+                    placeholder={"payment terms\nEstonian law"}
+                  />
+                </label>
+                <label className="guideline-field">
+                  <span className="field-label">Must Not Contain Words or Phrases</span>
+                  <textarea
+                    value={forbiddenTermsText}
+                    onChange={(event) => setForbiddenTermsText(event.target.value)}
+                    rows={6}
+                    placeholder={"draft only\nunlimited liability"}
+                  />
+                </label>
+                <div className="guideline-type-explainer guideline-field-wide">
+                  <strong>Strict keyword matching</strong>
+                  <p>
+                    Each phrase is matched against the extracted contract text without caring about uppercase or
+                    lowercase letters.
+                  </p>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
