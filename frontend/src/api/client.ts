@@ -139,9 +139,14 @@ export type CheckResultsResponse = {
   items: CheckResultItem[];
 };
 
+export type DeleteChecksRequest = {
+  check_ids: string[];
+};
+
 export type ContractSearchRequest = {
   query_text: string;
   strategy?: "semantic" | "strict";
+  result_mode?: "sections" | "contracts";
   document_ids?: string[];
   limit?: number;
 };
@@ -222,47 +227,83 @@ export class ApiClient {
     this.fetchFn = fetchFn;
   }
 
-  private invokeFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  private invokeFetch(
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ): Promise<Response> {
     const receiver =
-      typeof window !== "undefined" && typeof window.fetch === "function" ? window : globalThis;
+      typeof window !== "undefined" && typeof window.fetch === "function"
+        ? window
+        : globalThis;
 
-    return Reflect.apply(this.fetchFn, receiver, [input, init]) as Promise<Response>;
+    return Reflect.apply(this.fetchFn, receiver, [
+      input,
+      init,
+    ]) as Promise<Response>;
   }
 
   createDocument(body: CreateDocumentRequest, options?: RequestOptions) {
-    return this.request<DocumentResponse>("POST", "/api/v1/documents", body, options);
+    return this.request<DocumentResponse>(
+      "POST",
+      "/api/v1/documents",
+      body,
+      options,
+    );
   }
 
   createContract(body: CreateContractRequest, options?: RequestOptions) {
-    return this.request<ContractResponse>("POST", "/api/v1/contracts", body, options);
+    return this.request<ContractResponse>(
+      "POST",
+      "/api/v1/contracts",
+      body,
+      options,
+    );
   }
 
   listContracts(params?: { limit?: number; offset?: number }) {
     const query = new URLSearchParams();
     if (params?.limit !== undefined) query.set("limit", String(params.limit));
-    if (params?.offset !== undefined) query.set("offset", String(params.offset));
+    if (params?.offset !== undefined)
+      query.set("offset", String(params.offset));
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
-    return this.request<ContractListResponse>("GET", `/api/v1/contracts${suffix}`);
+    return this.request<ContractListResponse>(
+      "GET",
+      `/api/v1/contracts${suffix}`,
+    );
   }
 
   getContract(contractId: string) {
-    return this.request<ContractResponse>("GET", `/api/v1/contracts/${encodeURIComponent(contractId)}`);
+    return this.request<ContractResponse>(
+      "GET",
+      `/api/v1/contracts/${encodeURIComponent(contractId)}`,
+    );
   }
 
   updateContract(contractId: string, body: UpdateContractRequest) {
-    return this.request<ContractResponse>("PATCH", `/api/v1/contracts/${encodeURIComponent(contractId)}`, body);
+    return this.request<ContractResponse>(
+      "PATCH",
+      `/api/v1/contracts/${encodeURIComponent(contractId)}`,
+      body,
+    );
   }
 
   deleteContract(contractId: string) {
-    return this.request<void>("DELETE", `/api/v1/contracts/${encodeURIComponent(contractId)}`);
+    return this.request<void>(
+      "DELETE",
+      `/api/v1/contracts/${encodeURIComponent(contractId)}`,
+    );
   }
 
-  addContractFile(contractId: string, body: CreateDocumentRequest, options?: RequestOptions) {
+  addContractFile(
+    contractId: string,
+    body: CreateDocumentRequest,
+    options?: RequestOptions,
+  ) {
     return this.request<DocumentResponse>(
       "POST",
       `/api/v1/contracts/${encodeURIComponent(contractId)}/files`,
       body,
-      options
+      options,
     );
   }
 
@@ -270,7 +311,7 @@ export class ApiClient {
     return this.request<ContractResponse>(
       "PATCH",
       `/api/v1/contracts/${encodeURIComponent(contractId)}/files/order`,
-      { file_ids: fileIds }
+      { file_ids: fileIds },
     );
   }
 
@@ -288,20 +329,27 @@ export class ApiClient {
       query.append("tag", tag);
     }
     if (params?.limit !== undefined) query.set("limit", String(params.limit));
-    if (params?.offset !== undefined) query.set("offset", String(params.offset));
+    if (params?.offset !== undefined)
+      query.set("offset", String(params.offset));
 
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
-    return this.request<DocumentListResponse>("GET", `/api/v1/documents${suffix}`);
+    return this.request<DocumentListResponse>(
+      "GET",
+      `/api/v1/documents${suffix}`,
+    );
   }
 
   getDocument(documentId: string) {
-    return this.request<DocumentResponse>("GET", `/api/v1/documents/${encodeURIComponent(documentId)}`);
+    return this.request<DocumentResponse>(
+      "GET",
+      `/api/v1/documents/${encodeURIComponent(documentId)}`,
+    );
   }
 
   getDocumentText(documentId: string) {
     return this.request<DocumentTextResponse>(
       "GET",
-      `/api/v1/documents/${encodeURIComponent(documentId)}/text`
+      `/api/v1/documents/${encodeURIComponent(documentId)}/text`,
     );
   }
 
@@ -310,7 +358,10 @@ export class ApiClient {
   }
 
   deleteDocument(documentId: string) {
-    return this.request<void>("DELETE", `/api/v1/documents/${encodeURIComponent(documentId)}`);
+    return this.request<void>(
+      "DELETE",
+      `/api/v1/documents/${encodeURIComponent(documentId)}`,
+    );
   }
 
   startClausePresenceCheck(body: ClauseCheckRequest, options?: RequestOptions) {
@@ -318,44 +369,78 @@ export class ApiClient {
       "POST",
       "/api/v1/guidelines/clause-presence",
       body,
-      options
+      options,
     );
   }
 
-  startCompanyNameCheck(body: CompanyNameCheckRequest, options?: RequestOptions) {
+  startCompanyNameCheck(
+    body: CompanyNameCheckRequest,
+    options?: RequestOptions,
+  ) {
     return this.request<CheckAcceptedResponse>(
       "POST",
       "/api/v1/guidelines/company-name",
       body,
-      options
+      options,
     );
   }
 
   startLLMReviewCheck(body: LLMReviewCheckRequest, options?: RequestOptions) {
-    return this.request<CheckAcceptedResponse>("POST", "/api/v1/guidelines/llm-review", body, options);
+    return this.request<CheckAcceptedResponse>(
+      "POST",
+      "/api/v1/guidelines/llm-review",
+      body,
+      options,
+    );
   }
 
   getCheckRun(checkId: string) {
-    return this.request<CheckRunResponse>("GET", `/api/v1/guidelines/${encodeURIComponent(checkId)}`);
+    return this.request<CheckRunResponse>(
+      "GET",
+      `/api/v1/guidelines/${encodeURIComponent(checkId)}`,
+    );
   }
 
   getCheckResults(checkId: string) {
     return this.request<CheckResultsResponse>(
       "GET",
-      `/api/v1/guidelines/${encodeURIComponent(checkId)}/results`
+      `/api/v1/guidelines/${encodeURIComponent(checkId)}/results`,
     );
   }
 
-  searchContractSections(body: ContractSearchRequest, options?: RequestOptions) {
-    return this.request<ContractSearchResponse>("POST", "/api/v1/contracts/search", body, options);
+  deleteCheckRun(checkId: string) {
+    return this.request<void>(
+      "DELETE",
+      `/api/v1/guidelines/${encodeURIComponent(checkId)}`,
+    );
   }
 
-  chatWithContract(contractId: string, body: ContractChatRequest, options?: RequestOptions) {
+  deleteCheckRuns(body: DeleteChecksRequest) {
+    return this.request<void>("DELETE", "/api/v1/guidelines", body);
+  }
+
+  searchContractSections(
+    body: ContractSearchRequest,
+    options?: RequestOptions,
+  ) {
+    return this.request<ContractSearchResponse>(
+      "POST",
+      "/api/v1/contracts/search",
+      body,
+      options,
+    );
+  }
+
+  chatWithContract(
+    contractId: string,
+    body: ContractChatRequest,
+    options?: RequestOptions,
+  ) {
     return this.request<ContractChatResponse>(
       "POST",
       `/api/v1/contracts/${encodeURIComponent(contractId)}/chat`,
       body,
-      options
+      options,
     );
   }
 
@@ -363,10 +448,10 @@ export class ApiClient {
     method: "GET" | "POST" | "PATCH" | "DELETE",
     path: string,
     body?: unknown,
-    options?: RequestOptions
+    options?: RequestOptions,
   ): Promise<T> {
     const headers: Record<string, string> = {
-      Accept: "application/json"
+      Accept: "application/json",
     };
 
     if (options?.idempotencyKey) {
@@ -382,7 +467,7 @@ export class ApiClient {
       method,
       headers,
       signal: options?.signal,
-      body: body === undefined ? undefined : JSON.stringify(body)
+      body: body === undefined ? undefined : JSON.stringify(body),
     };
 
     let response: Response;
@@ -390,17 +475,20 @@ export class ApiClient {
       response = await this.invokeFetch(requestUrl, requestInit);
     } catch (error) {
       const fallbackReceiver =
-        typeof window !== "undefined" && typeof window.fetch === "function" ? window : globalThis;
+        typeof window !== "undefined" && typeof window.fetch === "function"
+          ? window
+          : globalThis;
 
       if (
         error instanceof TypeError &&
         /illegal invocation/i.test(error.message) &&
         typeof fallbackReceiver.fetch === "function"
       ) {
-        response = (await Reflect.apply(fallbackReceiver.fetch, fallbackReceiver, [
-          requestUrl,
-          requestInit
-        ])) as Response;
+        response = (await Reflect.apply(
+          fallbackReceiver.fetch,
+          fallbackReceiver,
+          [requestUrl, requestInit],
+        )) as Response;
       } else {
         throw error;
       }
@@ -442,8 +530,8 @@ export class ApiClient {
       error: {
         code: "http_error",
         message,
-        retriable: response.status >= 500
-      }
+        retriable: response.status >= 500,
+      },
     };
   }
 }

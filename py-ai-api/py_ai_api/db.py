@@ -51,14 +51,20 @@ class ChunkSearchStore:
         self,
         *,
         query_text: str,
+        exclude_texts: list[str] | None = None,
         document_ids: list[str] | None,
         limit: int,
     ) -> list[dict[str, str | int | float | None]]:
         ids = [doc_id for doc_id in (document_ids or []) if doc_id]
+        excluded_terms = [term.strip().lower() for term in (exclude_texts or []) if term and term.strip()]
         query = """
             WITH input AS (
-                SELECT websearch_to_tsquery('simple', %(query_text)s) AS tsq,
-                       lower(%(query_text)s) AS qnorm
+                SELECT CASE
+                           WHEN %(query_text)s <> '' THEN websearch_to_tsquery('simple', %(query_text)s)
+                           ELSE NULL
+                       END AS tsq,
+                       lower(%(query_text)s) AS qnorm,
+                       %(query_text)s <> '' AS has_positive_query
             ),
             ranked AS (
                 SELECT
@@ -68,17 +74,33 @@ class ChunkSearchStore:
                     c.snippet_text,
                     (
                         CASE
-                            WHEN c.search_vector @@ i.tsq THEN ts_rank_cd(c.search_vector, i.tsq, 32)
+                            WHEN i.has_positive_query AND c.search_vector @@ i.tsq THEN ts_rank_cd(c.search_vector, i.tsq, 32)
                             ELSE 0
                         END * 0.70
                     ) +
-                    (similarity(lower(c.snippet_text), i.qnorm) * 0.20) +
-                    (word_similarity(i.qnorm, lower(c.snippet_text)) * 0.10) AS score
+                    (
+                        CASE
+                            WHEN i.has_positive_query THEN similarity(lower(c.snippet_text), i.qnorm)
+                            ELSE 0
+                        END * 0.20
+                    ) +
+                    (
+                        CASE
+                            WHEN i.has_positive_query THEN word_similarity(i.qnorm, lower(c.snippet_text))
+                            ELSE 0
+                        END * 0.10
+                    ) AS score
                 FROM indexed_document_chunks AS c
                 CROSS JOIN input AS i
                 WHERE (%(document_ids)s::text[] IS NULL OR c.document_id = ANY(%(document_ids)s))
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM unnest(COALESCE(%(excluded_terms)s::text[], ARRAY[]::text[])) AS excluded(term)
+                      WHERE position(excluded.term in lower(c.snippet_text)) > 0
+                  )
                   AND (
-                      c.search_vector @@ i.tsq
+                      NOT i.has_positive_query
+                      OR c.search_vector @@ i.tsq
                       OR similarity(lower(c.snippet_text), i.qnorm) >= 0.18
                       OR word_similarity(i.qnorm, lower(c.snippet_text)) >= 0.35
                   )
@@ -100,6 +122,7 @@ class ChunkSearchStore:
                     query,
                     {
                         "query_text": query_text,
+                        "excluded_terms": excluded_terms if excluded_terms else None,
                         "document_ids": ids if ids else None,
                         "limit": max(1, limit),
                     },

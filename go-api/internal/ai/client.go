@@ -150,6 +150,7 @@ type SearchSectionsRequest struct {
 	DocumentIDs []string `json:"document_ids,omitempty"`
 	Limit       int      `json:"limit,omitempty"`
 	Strategy    string   `json:"strategy,omitempty"`
+	ResultMode  string   `json:"result_mode,omitempty"`
 }
 
 type SearchSectionsResultItem struct {

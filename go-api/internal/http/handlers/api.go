@@ -346,11 +346,16 @@ type checkResultsResponse struct {
 	Items   []checkResultItem `json:"items"`
 }
 
+type deleteChecksRequest struct {
+	CheckIDs []string `json:"check_ids"`
+}
+
 type contractSearchRequest struct {
 	QueryText   string   `json:"query_text"`
 	DocumentIDs []string `json:"document_ids,omitempty"`
 	Limit       int      `json:"limit,omitempty"`
 	Strategy    string   `json:"strategy,omitempty"`
+	ResultMode  string   `json:"result_mode,omitempty"`
 }
 
 type contractSearchResultItem struct {
@@ -423,6 +428,16 @@ func NewAPI(logger slogLogger, aiClient aiClient, store documentStore, copier ex
 		idempotency:    map[string]idempotencyRecord{},
 		copyEvents:     map[string]externalCopyEvent{},
 	}
+}
+
+// EnableInMemoryReadersForTesting wires read handlers to the in-memory state maps.
+// It is intended only for tests that construct an API without a database.
+func (a *API) EnableInMemoryReadersForTesting() {
+	if a == nil {
+		return
+	}
+	a.contractsModel = &inMemoryContractReader{api: a}
+	a.documentsModel = &inMemoryDocumentReader{api: a}
 }
 
 func mapDocument(doc document) documentResponse {

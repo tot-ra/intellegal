@@ -10,12 +10,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"sort"
 	"testing"
 	"time"
 
 	"legal-doc-intel/go-api/internal/ai"
-	"legal-doc-intel/go-api/internal/models"
 )
 
 type noopLogger struct{}
@@ -34,8 +32,9 @@ type stubDocumentStore struct {
 }
 
 type searchCapturingAIClient struct {
-	req ai.SearchSectionsRequest
-	ctx context.Context
+	req            ai.SearchSectionsRequest
+	ctx            context.Context
+	searchResponse ai.SearchSectionsResult
 }
 
 func (s *searchCapturingAIClient) AnalyzeClause(context.Context, ai.AnalyzeClauseRequest) (ai.AnalysisResult, error) {
@@ -65,6 +64,9 @@ func (s *searchCapturingAIClient) Index(context.Context, ai.IndexRequest) (ai.In
 func (s *searchCapturingAIClient) SearchSections(ctx context.Context, req ai.SearchSectionsRequest) (ai.SearchSectionsResult, error) {
 	s.ctx = ctx
 	s.req = req
+	if len(s.searchResponse.Items) > 0 {
+		return s.searchResponse, nil
+	}
 	return ai.SearchSectionsResult{
 		Items: []ai.SearchSectionsResultItem{
 			{
@@ -99,219 +101,8 @@ func (s *stubDocumentStore) Delete(_ context.Context, key string) error {
 	return nil
 }
 
-type inMemoryContractReader struct {
-	api *API
-}
-
-func (r *inMemoryContractReader) List(_ context.Context, limit, offset int) ([]models.ContractListRow, int, error) {
-	r.api.mu.RLock()
-	items := make([]contract, 0, len(r.api.contracts))
-	for _, item := range r.api.contracts {
-		items = append(items, item)
-	}
-	r.api.mu.RUnlock()
-
-	sort.Slice(items, func(i, j int) bool { return items[i].CreatedAt.After(items[j].CreatedAt) })
-	total := len(items)
-	if offset > total {
-		offset = total
-	}
-	end := offset + limit
-	if end > total {
-		end = total
-	}
-
-	out := make([]models.ContractListRow, 0, end-offset)
-	for _, item := range items[offset:end] {
-		out = append(out, models.ContractListRow{
-			ID:         item.ID,
-			Name:       item.Name,
-			SourceType: item.SourceType,
-			SourceRef:  item.SourceRef,
-			Tags:       append([]string(nil), item.Tags...),
-			FileCount:  len(item.FileIDs),
-			CreatedAt:  item.CreatedAt,
-			UpdatedAt:  item.UpdatedAt,
-		})
-	}
-	return out, total, nil
-}
-
-func (r *inMemoryContractReader) Get(_ context.Context, contractID string) (models.ContractRow, bool, error) {
-	r.api.mu.RLock()
-	item, ok := r.api.contracts[contractID]
-	if !ok {
-		r.api.mu.RUnlock()
-		return models.ContractRow{}, false, nil
-	}
-	files := make([]models.DocumentRow, 0, len(item.FileIDs))
-	for _, fileID := range item.FileIDs {
-		if doc, exists := r.api.documents[fileID]; exists {
-			files = append(files, models.DocumentRow{
-				ID:            doc.ID,
-				ContractID:    doc.ContractID,
-				SourceType:    doc.SourceType,
-				SourceRef:     doc.SourceRef,
-				Tags:          append([]string(nil), doc.Tags...),
-				Filename:      doc.Filename,
-				MIMEType:      doc.MIMEType,
-				Status:        doc.Status,
-				Checksum:      doc.Checksum,
-				ExtractedText: doc.ExtractedText,
-				StorageKey:    doc.StorageKey,
-				StorageURI:    doc.StorageURI,
-				CreatedAt:     doc.CreatedAt,
-				UpdatedAt:     doc.UpdatedAt,
-			})
-		}
-	}
-	r.api.mu.RUnlock()
-
-	return models.ContractRow{
-		ID:         item.ID,
-		Name:       item.Name,
-		SourceType: item.SourceType,
-		SourceRef:  item.SourceRef,
-		Tags:       append([]string(nil), item.Tags...),
-		CreatedAt:  item.CreatedAt,
-		UpdatedAt:  item.UpdatedAt,
-		Files:      files,
-	}, true, nil
-}
-
-type inMemoryDocumentReader struct {
-	api *API
-}
-
-func (r *inMemoryDocumentReader) List(_ context.Context, filter models.DocumentsListFilter) ([]models.DocumentRow, int, error) {
-	r.api.mu.RLock()
-	items := make([]document, 0, len(r.api.documents))
-	for _, doc := range r.api.documents {
-		items = append(items, doc)
-	}
-	r.api.mu.RUnlock()
-
-	filtered := make([]document, 0, len(items))
-	for _, doc := range items {
-		if filter.Status != "" && doc.Status != filter.Status {
-			continue
-		}
-		if filter.SourceType != "" && doc.SourceType != filter.SourceType {
-			continue
-		}
-		if len(filter.Tags) > 0 && !documentHasAnyTag(doc, filter.Tags) {
-			continue
-		}
-		filtered = append(filtered, doc)
-	}
-	sort.Slice(filtered, func(i, j int) bool { return filtered[i].CreatedAt.After(filtered[j].CreatedAt) })
-	total := len(filtered)
-	if filter.Offset > total {
-		filter.Offset = total
-	}
-	end := filter.Offset + filter.Limit
-	if end > total {
-		end = total
-	}
-
-	out := make([]models.DocumentRow, 0, end-filter.Offset)
-	for _, doc := range filtered[filter.Offset:end] {
-		out = append(out, models.DocumentRow{
-			ID:            doc.ID,
-			ContractID:    doc.ContractID,
-			SourceType:    doc.SourceType,
-			SourceRef:     doc.SourceRef,
-			Tags:          append([]string(nil), doc.Tags...),
-			Filename:      doc.Filename,
-			MIMEType:      doc.MIMEType,
-			Status:        doc.Status,
-			Checksum:      doc.Checksum,
-			ExtractedText: doc.ExtractedText,
-			StorageKey:    doc.StorageKey,
-			StorageURI:    doc.StorageURI,
-			CreatedAt:     doc.CreatedAt,
-			UpdatedAt:     doc.UpdatedAt,
-		})
-	}
-	return out, total, nil
-}
-
-func (r *inMemoryDocumentReader) Get(_ context.Context, documentID string) (models.DocumentRow, bool, error) {
-	r.api.mu.RLock()
-	doc, ok := r.api.documents[documentID]
-	r.api.mu.RUnlock()
-	if !ok {
-		return models.DocumentRow{}, false, nil
-	}
-	return models.DocumentRow{
-		ID:            doc.ID,
-		ContractID:    doc.ContractID,
-		SourceType:    doc.SourceType,
-		SourceRef:     doc.SourceRef,
-		Tags:          append([]string(nil), doc.Tags...),
-		Filename:      doc.Filename,
-		MIMEType:      doc.MIMEType,
-		Status:        doc.Status,
-		Checksum:      doc.Checksum,
-		ExtractedText: doc.ExtractedText,
-		StorageKey:    doc.StorageKey,
-		StorageURI:    doc.StorageURI,
-		CreatedAt:     doc.CreatedAt,
-		UpdatedAt:     doc.UpdatedAt,
-	}, true, nil
-}
-
-func (r *inMemoryDocumentReader) ListIDs(_ context.Context) ([]string, error) {
-	r.api.mu.RLock()
-	ids := make([]string, 0, len(r.api.documents))
-	for id := range r.api.documents {
-		ids = append(ids, id)
-	}
-	r.api.mu.RUnlock()
-	sort.Strings(ids)
-	return ids, nil
-}
-
-func (r *inMemoryDocumentReader) ResolveIDs(_ context.Context, explicit []string) ([]string, error) {
-	seen := make(map[string]struct{}, len(explicit))
-	resolved := make([]string, 0, len(explicit))
-	r.api.mu.RLock()
-	defer r.api.mu.RUnlock()
-	for _, id := range explicit {
-		if _, ok := r.api.documents[id]; !ok {
-			return nil, errors.New("document not found: " + id)
-		}
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		resolved = append(resolved, id)
-	}
-	sort.Strings(resolved)
-	return resolved, nil
-}
-
-func (r *inMemoryDocumentReader) Exists(_ context.Context, documentID string) (bool, error) {
-	r.api.mu.RLock()
-	_, ok := r.api.documents[documentID]
-	r.api.mu.RUnlock()
-	return ok, nil
-}
-
-func (r *inMemoryDocumentReader) GetByIDs(_ context.Context, documentIDs []string) (map[string]models.DocumentRow, error) {
-	out := make(map[string]models.DocumentRow, len(documentIDs))
-	for _, id := range documentIDs {
-		doc, ok, _ := r.Get(context.Background(), id)
-		if ok {
-			out[id] = doc
-		}
-	}
-	return out, nil
-}
-
 func useInMemoryReaders(api *API) {
-	api.contractsModel = &inMemoryContractReader{api: api}
-	api.documentsModel = &inMemoryDocumentReader{api: api}
+	api.EnableInMemoryReadersForTesting()
 }
 
 func TestCreateDocument_ReturnsBadRequestForUnsupportedMIMEType(t *testing.T) {
@@ -745,6 +536,86 @@ func TestGetCheckResults_ReturnsConflictWhenCheckIsNotCompleted(t *testing.T) {
 	}
 }
 
+func TestDeleteCheck_RemovesCheckAndIdempotencyRecord(t *testing.T) {
+	api := NewAPI(noopLogger{}, nil, nil, nil)
+
+	checkID := "00000000-0000-4000-8000-000000000021"
+	api.checks[checkID] = checkRun{
+		CheckID:     checkID,
+		Status:      checkStatusCompleted,
+		CheckType:   checkTypeClause,
+		RequestedAt: time.Now().UTC(),
+		DocumentIDs: []string{"00000000-0000-4000-8000-000000000022"},
+	}
+	api.idempotency[checkTypeClause+":idem-delete-check"] = idempotencyRecord{
+		PayloadHash: "hash",
+		CheckID:     checkID,
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/guidelines/"+checkID, nil)
+	req.SetPathValue("check_id", checkID)
+	w := httptest.NewRecorder()
+
+	api.DeleteCheck(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", w.Code)
+	}
+	if _, ok := api.checks[checkID]; ok {
+		t.Fatal("expected check to be removed")
+	}
+	if _, ok := api.idempotency[checkTypeClause+":idem-delete-check"]; ok {
+		t.Fatal("expected idempotency record to be removed")
+	}
+}
+
+func TestDeleteChecks_RemovesMultipleChecks(t *testing.T) {
+	api := NewAPI(noopLogger{}, nil, nil, nil)
+
+	firstCheckID := "00000000-0000-4000-8000-000000000023"
+	secondCheckID := "00000000-0000-4000-8000-000000000024"
+	api.checks[firstCheckID] = checkRun{
+		CheckID:     firstCheckID,
+		Status:      checkStatusCompleted,
+		CheckType:   checkTypeClause,
+		RequestedAt: time.Now().UTC(),
+	}
+	api.checks[secondCheckID] = checkRun{
+		CheckID:     secondCheckID,
+		Status:      checkStatusCompleted,
+		CheckType:   checkTypeLLMReview,
+		RequestedAt: time.Now().UTC(),
+	}
+	api.idempotency[checkTypeClause+":idem-bulk-delete-1"] = idempotencyRecord{
+		PayloadHash: "hash-1",
+		CheckID:     firstCheckID,
+	}
+	api.idempotency[checkTypeLLMReview+":idem-bulk-delete-2"] = idempotencyRecord{
+		PayloadHash: "hash-2",
+		CheckID:     secondCheckID,
+	}
+
+	resp := performJSONRequest(t, http.MethodDelete, "/api/v1/guidelines", map[string]any{
+		"check_ids": []string{firstCheckID, secondCheckID},
+	}, api.DeleteChecks)
+
+	if resp.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", resp.Code)
+	}
+	if _, ok := api.checks[firstCheckID]; ok {
+		t.Fatal("expected first check to be removed")
+	}
+	if _, ok := api.checks[secondCheckID]; ok {
+		t.Fatal("expected second check to be removed")
+	}
+	if _, ok := api.idempotency[checkTypeClause+":idem-bulk-delete-1"]; ok {
+		t.Fatal("expected first idempotency record to be removed")
+	}
+	if _, ok := api.idempotency[checkTypeLLMReview+":idem-bulk-delete-2"]; ok {
+		t.Fatal("expected second idempotency record to be removed")
+	}
+}
+
 func TestDeleteDocument_RemovesDocumentAndRelatedData(t *testing.T) {
 	// Arrange
 	store := &stubDocumentStore{}
@@ -1063,8 +934,83 @@ func TestSearchContracts_PassesStrategyToAI(t *testing.T) {
 	if aiClient.req.Strategy != "strict" {
 		t.Fatalf("expected strict strategy, got %q", aiClient.req.Strategy)
 	}
+	if aiClient.req.ResultMode != "sections" {
+		t.Fatalf("expected default sections result mode, got %q", aiClient.req.ResultMode)
+	}
 	if len(aiClient.req.DocumentIDs) != 1 || aiClient.req.DocumentIDs[0] != documentID {
 		t.Fatalf("unexpected document ids: %#v", aiClient.req.DocumentIDs)
+	}
+}
+
+func TestSearchContracts_ReturnsBadRequestForInvalidResultMode(t *testing.T) {
+	api := NewAPI(noopLogger{}, nil, nil, nil)
+
+	resp := performJSONRequest(t, http.MethodPost, "/api/v1/contracts/search", map[string]any{
+		"query_text":  "payment terms",
+		"result_mode": "documents",
+	}, api.SearchContracts)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.Code)
+	}
+	body := decodeJSONBody(t, resp)
+	if body.Error.Code != "invalid_argument" {
+		t.Fatalf("expected invalid_argument, got %q", body.Error.Code)
+	}
+}
+
+func TestSearchContracts_CollapsesResultsByContract(t *testing.T) {
+	aiClient := &searchCapturingAIClient{}
+	api := NewAPI(noopLogger{}, aiClient, nil, nil)
+	useInMemoryReaders(api)
+	now := time.Now().UTC()
+
+	api.documents["doc-1"] = document{
+		ID:         "doc-1",
+		ContractID: "contract-1",
+		Filename:   "alpha-main.pdf",
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	api.documents["doc-2"] = document{
+		ID:         "doc-2",
+		ContractID: "contract-1",
+		Filename:   "alpha-appendix.pdf",
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+
+	aiClientResp := []ai.SearchSectionsResultItem{
+		{DocumentID: "doc-1", PageNumber: 7, ChunkID: "12", Score: 0.61, SnippetText: "payment terms"},
+		{DocumentID: "doc-2", PageNumber: 1, ChunkID: "2", Score: 0.94, SnippetText: "payment terms with appendix"},
+	}
+	aiClient.searchResponse = ai.SearchSectionsResult{Items: aiClientResp}
+
+	resp := performJSONRequest(t, http.MethodPost, "/api/v1/contracts/search", map[string]any{
+		"query_text":  "payment terms",
+		"result_mode": "contracts",
+		"limit":       3,
+	}, api.SearchContracts)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.Code)
+	}
+	if aiClient.req.ResultMode != "contracts" {
+		t.Fatalf("expected contracts result mode, got %q", aiClient.req.ResultMode)
+	}
+	if aiClient.req.Limit != 15 {
+		t.Fatalf("expected overfetch limit 15, got %d", aiClient.req.Limit)
+	}
+
+	var body contractSearchResponse
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(body.Items) != 1 {
+		t.Fatalf("expected one collapsed contract result, got %d", len(body.Items))
+	}
+	if body.Items[0].DocumentID != "doc-2" {
+		t.Fatalf("expected strongest document to represent the contract, got %q", body.Items[0].DocumentID)
 	}
 }
 

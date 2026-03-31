@@ -138,6 +138,7 @@ def test_search_sections_strict_normalizes_database_rows(monkeypatch) -> None:
     store = db.ChunkSearchStore("postgresql://db")
     result = store.search_sections_strict(
         query_text="payment terms",
+        exclude_texts=["late fee", "termination"],
         document_ids=["doc-1", "", None],
         limit=0,
     )
@@ -148,6 +149,7 @@ def test_search_sections_strict_normalizes_database_rows(monkeypatch) -> None:
     assert "websearch_to_tsquery" in query
     assert params == {
         "query_text": "payment terms",
+        "excluded_terms": ["late fee", "termination"],
         "document_ids": ["doc-1"],
         "limit": 1,
     }

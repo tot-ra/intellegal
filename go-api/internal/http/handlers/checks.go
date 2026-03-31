@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -146,6 +147,60 @@ func (a *API) GetCheckResults(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, checkResultsResponse{CheckID: check.CheckID, Status: check.Status, Items: check.Items})
 }
 
+func (a *API) DeleteCheck(w http.ResponseWriter, r *http.Request) {
+	checkID := pathParam(r, "check_id")
+	if !ids.IsUUID(checkID) {
+		writeError(w, http.StatusBadRequest, "invalid_argument", "check_id must be a valid UUID", false, nil)
+		return
+	}
+
+	deleted, err := a.deleteChecksByID(r.Context(), []string{checkID})
+	if err != nil {
+		a.logger.Error("delete check failed", "check_id", checkID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to delete check", true, nil)
+		return
+	}
+	if deleted == 0 {
+		writeError(w, http.StatusNotFound, "not_found", "check not found", false, nil)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *API) DeleteChecks(w http.ResponseWriter, r *http.Request) {
+	var req deleteChecksRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if len(req.CheckIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "invalid_argument", "check_ids must contain at least one id", false, nil)
+		return
+	}
+
+	seen := make(map[string]struct{}, len(req.CheckIDs))
+	checkIDs := make([]string, 0, len(req.CheckIDs))
+	for _, checkID := range req.CheckIDs {
+		if !ids.IsUUID(checkID) {
+			writeError(w, http.StatusBadRequest, "invalid_argument", "each check_id must be a valid UUID", false, nil)
+			return
+		}
+		if _, ok := seen[checkID]; ok {
+			continue
+		}
+		seen[checkID] = struct{}{}
+		checkIDs = append(checkIDs, checkID)
+	}
+
+	if _, err := a.deleteChecksByID(r.Context(), checkIDs); err != nil {
+		a.logger.Error("bulk delete checks failed", "check_count", len(checkIDs), "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to delete checks", true, nil)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (a *API) SearchContracts(w http.ResponseWriter, r *http.Request) {
 	var req contractSearchRequest
 	if !decodeJSON(w, r, &req) {
@@ -163,6 +218,14 @@ func (a *API) SearchContracts(w http.ResponseWriter, r *http.Request) {
 	}
 	if strategy != "semantic" && strategy != "strict" {
 		writeError(w, http.StatusBadRequest, "invalid_argument", "strategy must be one of: semantic, strict", false, nil)
+		return
+	}
+	resultMode := strings.TrimSpace(strings.ToLower(req.ResultMode))
+	if resultMode == "" {
+		resultMode = "sections"
+	}
+	if resultMode != "sections" && resultMode != "contracts" {
+		writeError(w, http.StatusBadRequest, "invalid_argument", "result_mode must be one of: sections, contracts", false, nil)
 		return
 	}
 
@@ -210,8 +273,9 @@ func (a *API) SearchContracts(w http.ResponseWriter, r *http.Request) {
 		RequestID:   middleware.GetRequestID(r.Context()),
 		QueryText:   queryText,
 		DocumentIDs: resolvedDocIDs,
-		Limit:       limit,
+		Limit:       searchCandidateLimit(limit, resultMode),
 		Strategy:    strategy,
+		ResultMode:  resultMode,
 	})
 	if err != nil {
 		a.logger.Error("contract search failed", "error", err)
@@ -255,8 +319,76 @@ func (a *API) SearchContracts(w http.ResponseWriter, r *http.Request) {
 			SnippetText: item.SnippetText,
 		})
 	}
+	if resultMode == "contracts" {
+		items = collapseContractSearchResults(items, limit)
+	}
+	if len(items) > limit {
+		items = items[:limit]
+	}
 
 	writeJSON(w, http.StatusOK, contractSearchResponse{Items: items})
+}
+
+func searchCandidateLimit(limit int, resultMode string) int {
+	if resultMode != "contracts" {
+		return limit
+	}
+	return min(50, max(limit, limit*5))
+}
+
+func collapseContractSearchResults(items []contractSearchResultItem, limit int) []contractSearchResultItem {
+	bestByGroup := make(map[string]contractSearchResultItem, len(items))
+	order := make([]string, 0, len(items))
+	for _, item := range items {
+		groupKey := strings.TrimSpace(item.ContractID)
+		if groupKey == "" {
+			groupKey = item.DocumentID
+		}
+
+		current, ok := bestByGroup[groupKey]
+		if !ok {
+			bestByGroup[groupKey] = item
+			order = append(order, groupKey)
+			continue
+		}
+		if item.Score > current.Score || (item.Score == current.Score && item.PageNumber < current.PageNumber) {
+			bestByGroup[groupKey] = item
+		}
+	}
+
+	slices.SortStableFunc(order, func(left, right string) int {
+		a := bestByGroup[left]
+		b := bestByGroup[right]
+		switch {
+		case a.Score > b.Score:
+			return -1
+		case a.Score < b.Score:
+			return 1
+		case a.ContractID < b.ContractID:
+			return -1
+		case a.ContractID > b.ContractID:
+			return 1
+		case a.DocumentID < b.DocumentID:
+			return -1
+		case a.DocumentID > b.DocumentID:
+			return 1
+		case a.PageNumber < b.PageNumber:
+			return -1
+		case a.PageNumber > b.PageNumber:
+			return 1
+		default:
+			return 0
+		}
+	})
+
+	collapsed := make([]contractSearchResultItem, 0, min(limit, len(order)))
+	for _, key := range order {
+		collapsed = append(collapsed, bestByGroup[key])
+		if len(collapsed) >= limit {
+			break
+		}
+	}
+	return collapsed
 }
 
 func (a *API) createCheck(r *http.Request, checkType string, payload any, documentIDs []string) (checkID string, status string, reused bool, err error) {
@@ -316,6 +448,43 @@ func (a *API) createCheck(r *http.Request, checkType string, payload any, docume
 	})
 
 	return checkID, status, false, nil
+}
+
+func (a *API) deleteChecksByID(ctx context.Context, checkIDs []string) (int, error) {
+	if len(checkIDs) == 0 {
+		return 0, nil
+	}
+
+	checksToDelete := make([]checkRun, 0, len(checkIDs))
+
+	a.mu.Lock()
+	for _, checkID := range checkIDs {
+		run, ok := a.checks[checkID]
+		if !ok {
+			continue
+		}
+		checksToDelete = append(checksToDelete, run)
+	}
+
+	if err := a.deleteChecksState(ctx, checkIDs); err != nil {
+		a.mu.Unlock()
+		return 0, err
+	}
+
+	for _, run := range checksToDelete {
+		delete(a.checks, run.CheckID)
+		for key, rec := range a.idempotency {
+			if rec.CheckID == run.CheckID {
+				delete(a.idempotency, key)
+			}
+		}
+		a.emitAuditEvent("check.deleted", "check", run.CheckID, map[string]any{
+			"check_type": run.CheckType,
+		})
+	}
+	a.mu.Unlock()
+
+	return len(checksToDelete), nil
 }
 
 func (a *API) resolveDocumentIDs(explicit []string) ([]string, error) {

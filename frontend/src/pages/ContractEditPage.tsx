@@ -6,7 +6,7 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState
+  useState,
 } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
@@ -16,10 +16,12 @@ import {
   type ContractResponse,
   type DocumentResponse,
   type DocumentStatus,
-  type DocumentTextResponse
+  type DocumentTextResponse,
 } from "../api/client";
 import { formatEuropeanDateTime } from "../app/datetime";
 import {
+  deleteStoredResultsMany,
+  deleteStoredRuns,
   getStoredGuidelineRule,
   getStoredResults,
   listPendingAutoGuidelineRuns,
@@ -29,9 +31,12 @@ import {
   upsertStoredRun,
   writeLocalJson,
   readLocalJson,
-  type StoredCheckRun
+  type StoredCheckRun,
 } from "../app/localState";
-import { formatGuidelineRunStatusEmoji, runGuidelineRule } from "../app/guidelineRunFlow";
+import {
+  formatGuidelineRunStatusEmoji,
+  runGuidelineRule,
+} from "../app/guidelineRunFlow";
 
 const CONTRACT_TEXT_SETTINGS_KEY = "ldi.contractTextSettings";
 const DEFAULT_TEXT_FONT_SIZE = 1.12;
@@ -61,11 +66,14 @@ type LocatedCitation = ContractChatCitation & {
 function buildChatPayload(messages: ChatMessage[]): ContractChatMessage[] {
   return messages.map((message) => ({
     role: message.role,
-    content: message.content
+    content: message.content,
   }));
 }
 
-function findCitationRange(text: string, snippetText: string): { start: number; end: number } | null {
+function findCitationRange(
+  text: string,
+  snippetText: string,
+): { start: number; end: number } | null {
   const normalizedText = text.toLowerCase();
   const normalizedSnippet = snippetText.trim().toLowerCase();
   if (!normalizedSnippet) {
@@ -78,7 +86,10 @@ function findCitationRange(text: string, snippetText: string): { start: number; 
   return { start, end: start + normalizedSnippet.length };
 }
 
-function locateCitations(text: string, citations: LocatedCitation[]): LocatedCitation[] {
+function locateCitations(
+  text: string,
+  citations: LocatedCitation[],
+): LocatedCitation[] {
   const matches: LocatedCitation[] = [];
   for (const citation of citations) {
     const range = findCitationRange(text, citation.snippet_text);
@@ -93,7 +104,7 @@ function locateCitations(text: string, citations: LocatedCitation[]): LocatedCit
 function renderHighlightedContractText(
   text: string,
   citations: LocatedCitation[],
-  activeCitationId: string | null
+  activeCitationId: string | null,
 ): ReactNode[] {
   if (citations.length === 0) {
     return [text];
@@ -120,7 +131,7 @@ function renderHighlightedContractText(
         title={citation.reason || "Referenced by contract assistant"}
       >
         {content}
-      </mark>
+      </mark>,
     );
     cursor = citation.end;
     segmentIndex += 1;
@@ -150,7 +161,7 @@ function RobotIcon() {
 function readContractTextSettings(): ContractTextSettings {
   return readLocalJson<ContractTextSettings>(CONTRACT_TEXT_SETTINGS_KEY, {
     fontSize: DEFAULT_TEXT_FONT_SIZE,
-    lineHeight: DEFAULT_TEXT_LINE_HEIGHT
+    lineHeight: DEFAULT_TEXT_LINE_HEIGHT,
   });
 }
 
@@ -193,23 +204,37 @@ export function ContractEditPage() {
   const [contractTagsInput, setContractTagsInput] = useState("");
   const [savingDetails, setSavingDetails] = useState(false);
   const [textLoading, setTextLoading] = useState(false);
-  const [documentTexts, setDocumentTexts] = useState<Record<string, DocumentTextResponse>>({});
+  const [documentTexts, setDocumentTexts] = useState<
+    Record<string, DocumentTextResponse>
+  >({});
   const [textError, setTextError] = useState<string | null>(null);
-  const [pendingAutoRuns, setPendingAutoRuns] = useState(() => (contractId ? listPendingAutoGuidelineRuns(contractId) : []));
+  const [pendingAutoRuns, setPendingAutoRuns] = useState(() =>
+    contractId ? listPendingAutoGuidelineRuns(contractId) : [],
+  );
   const [guidelineRuns, setGuidelineRuns] = useState<StoredCheckRun[]>([]);
+  const [selectedGuidelineRunIds, setSelectedGuidelineRunIds] = useState<
+    string[]
+  >([]);
   const [guidelineError, setGuidelineError] = useState<string | null>(null);
   const [startingAutoGuidelines, setStartingAutoGuidelines] = useState(false);
+  const [deletingGuidelines, setDeletingGuidelines] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<ContractDisplayMode>("text");
-  const [textFontSize, setTextFontSize] = useState(() => readContractTextSettings().fontSize);
-  const [textLineHeight, setTextLineHeight] = useState(() => readContractTextSettings().lineHeight);
+  const [textFontSize, setTextFontSize] = useState(
+    () => readContractTextSettings().fontSize,
+  );
+  const [textLineHeight, setTextLineHeight] = useState(
+    () => readContractTextSettings().lineHeight,
+  );
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
-  const [activeCitations, setActiveCitations] = useState<ContractChatCitation[]>([]);
+  const [activeCitations, setActiveCitations] = useState<
+    ContractChatCitation[]
+  >([]);
   const [activeCitationId, setActiveCitationId] = useState<string | null>(null);
   const creationNotice = searchParams.get("notice")?.trim() ?? "";
   const chatBodyRef = useRef<HTMLDivElement | null>(null);
@@ -218,9 +243,9 @@ export function ContractEditPage() {
     () =>
       ({
         "--contract-text-font-size": `${textFontSize}rem`,
-        "--contract-text-line-height": String(textLineHeight)
+        "--contract-text-line-height": String(textLineHeight),
       }) as CSSProperties,
-    [textFontSize, textLineHeight]
+    [textFontSize, textLineHeight],
   );
 
   const appendFiles = (incomingFiles: File[]) => {
@@ -254,7 +279,7 @@ export function ContractEditPage() {
   useEffect(() => {
     writeLocalJson<ContractTextSettings>(CONTRACT_TEXT_SETTINGS_KEY, {
       fontSize: textFontSize,
-      lineHeight: textLineHeight
+      lineHeight: textLineHeight,
     });
   }, [textFontSize, textLineHeight]);
 
@@ -269,17 +294,24 @@ export function ContractEditPage() {
     if (!activeCitationId) {
       return;
     }
-    const highlight = document.getElementById(`contract-chat-highlight-${activeCitationId}`);
+    const highlight = document.getElementById(
+      `contract-chat-highlight-${activeCitationId}`,
+    );
     if (!highlight || typeof highlight.scrollIntoView !== "function") {
       return;
     }
     highlight.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [activeCitationId, activeCitations, documentTexts, displayMode]);
 
-  const contractDocumentIds = useMemo(() => files.map((file) => file.id), [files]);
+  const contractDocumentIds = useMemo(
+    () => files.map((file) => file.id),
+    [files],
+  );
 
   useEffect(() => {
-    setPendingAutoRuns(contractId ? listPendingAutoGuidelineRuns(contractId) : []);
+    setPendingAutoRuns(
+      contractId ? listPendingAutoGuidelineRuns(contractId) : [],
+    );
   }, [contractId, files.length, contract?.updated_at]);
 
   useEffect(() => {
@@ -299,13 +331,15 @@ export function ContractEditPage() {
           files.map(async (file) => {
             const text = await apiClient.getDocumentText(file.id);
             return [file.id, text] as const;
-          })
+          }),
         );
         if (cancelled) return;
         setDocumentTexts(Object.fromEntries(loaded));
       } catch (err) {
         if (cancelled) return;
-        setTextError(err instanceof Error ? err.message : "Failed to load contract text.");
+        setTextError(
+          err instanceof Error ? err.message : "Failed to load contract text.",
+        );
       } finally {
         if (!cancelled) {
           setTextLoading(false);
@@ -325,12 +359,13 @@ export function ContractEditPage() {
         summary[file.status] += 1;
         return summary;
       },
-      { ingested: 0, processing: 0, indexed: 0, failed: 0 }
+      { ingested: 0, processing: 0, indexed: 0, failed: 0 },
     );
   }, [files]);
 
   useEffect(() => {
-    const shouldPoll = statusSummary.processing > 0 || statusSummary.ingested > 0;
+    const shouldPoll =
+      statusSummary.processing > 0 || statusSummary.ingested > 0;
     if (!shouldPoll) {
       return;
     }
@@ -356,19 +391,32 @@ export function ContractEditPage() {
         id: `${citation.document_id}-${index}`,
         colorIndex: index % 4,
         start: match.start,
-        end: match.end
+        end: match.end,
       };
-      byDocument[citation.document_id] = [...(byDocument[citation.document_id] ?? []), located];
+      byDocument[citation.document_id] = [
+        ...(byDocument[citation.document_id] ?? []),
+        located,
+      ];
     });
     return byDocument;
   }, [activeCitations, documentTexts]);
 
   useEffect(() => {
     const relevantRuns = listStoredRuns().filter((run) =>
-      (run.document_ids ?? []).some((documentId) => contractDocumentIds.includes(documentId))
+      (run.document_ids ?? []).some((documentId) =>
+        contractDocumentIds.includes(documentId),
+      ),
     );
     setGuidelineRuns(relevantRuns);
   }, [contractDocumentIds, contract?.updated_at, files.length]);
+
+  useEffect(() => {
+    setSelectedGuidelineRunIds((current) =>
+      current.filter((checkId) =>
+        guidelineRuns.some((run) => run.check_id === checkId),
+      ),
+    );
+  }, [guidelineRuns]);
 
   useEffect(() => {
     let cancelled = false;
@@ -380,7 +428,9 @@ export function ContractEditPage() {
       }
 
       const relevantRuns = listStoredRuns().filter((run) =>
-        (run.document_ids ?? []).some((documentId) => contractDocumentIds.includes(documentId))
+        (run.document_ids ?? []).some((documentId) =>
+          contractDocumentIds.includes(documentId),
+        ),
       );
 
       try {
@@ -395,27 +445,35 @@ export function ContractEditPage() {
             upsertStoredRun({ ...run, ...runResponse });
 
             if (runResponse.status === "completed") {
-              const resultsResponse = await apiClient.getCheckResults(run.check_id);
+              const resultsResponse = await apiClient.getCheckResults(
+                run.check_id,
+              );
               setStoredResults({
                 check_id: resultsResponse.check_id,
                 status: resultsResponse.status,
                 items: resultsResponse.items,
-                updated_at: new Date().toISOString()
+                updated_at: new Date().toISOString(),
               });
             }
-          })
+          }),
         );
       } catch (err) {
         if (!cancelled) {
-          setGuidelineError(err instanceof Error ? err.message : "Failed to refresh guideline checks.");
+          setGuidelineError(
+            err instanceof Error
+              ? err.message
+              : "Failed to refresh guideline checks.",
+          );
         }
       }
 
       if (!cancelled) {
         setGuidelineRuns(
           listStoredRuns().filter((run) =>
-            (run.document_ids ?? []).some((documentId) => contractDocumentIds.includes(documentId))
-          )
+            (run.document_ids ?? []).some((documentId) =>
+              contractDocumentIds.includes(documentId),
+            ),
+          ),
         );
       }
     };
@@ -431,11 +489,17 @@ export function ContractEditPage() {
     let cancelled = false;
 
     const startPendingAutoGuidelines = async () => {
-      if (!contractId || contractDocumentIds.length === 0 || pendingAutoRuns.length === 0) {
+      if (
+        !contractId ||
+        contractDocumentIds.length === 0 ||
+        pendingAutoRuns.length === 0
+      ) {
         return;
       }
 
-      const filesStillProcessing = files.some((file) => file.status === "ingested" || file.status === "processing");
+      const filesStillProcessing = files.some(
+        (file) => file.status === "ingested" || file.status === "processing",
+      );
       if (filesStillProcessing) {
         return;
       }
@@ -457,21 +521,29 @@ export function ContractEditPage() {
             rule,
             documentIds: contractDocumentIds,
             documents: files,
-            scope: "contract"
+            scope: "contract",
           });
         }
       } catch (err) {
         if (!cancelled) {
-          setGuidelineError(err instanceof Error ? err.message : "Failed to start automatic guideline checks.");
+          setGuidelineError(
+            err instanceof Error
+              ? err.message
+              : "Failed to start automatic guideline checks.",
+          );
         }
       } finally {
         if (!cancelled) {
           setStartingAutoGuidelines(false);
-          setPendingAutoRuns(contractId ? listPendingAutoGuidelineRuns(contractId) : []);
+          setPendingAutoRuns(
+            contractId ? listPendingAutoGuidelineRuns(contractId) : [],
+          );
           setGuidelineRuns(
             listStoredRuns().filter((run) =>
-              (run.document_ids ?? []).some((documentId) => contractDocumentIds.includes(documentId))
-            )
+              (run.document_ids ?? []).some((documentId) =>
+                contractDocumentIds.includes(documentId),
+              ),
+            ),
           );
         }
       }
@@ -520,6 +592,87 @@ export function ContractEditPage() {
     return normalizedName !== contract.name || normalizedTags !== currentTags;
   }, [contract, contractNameInput, contractTagsInput]);
 
+  const allGuidelineRunsSelected =
+    guidelineRuns.length > 0 &&
+    selectedGuidelineRunIds.length === guidelineRuns.length;
+
+  const selectedGuidelineRuns = useMemo(
+    () =>
+      guidelineRuns.filter((run) =>
+        selectedGuidelineRunIds.includes(run.check_id),
+      ),
+    [guidelineRuns, selectedGuidelineRunIds],
+  );
+
+  const refreshGuidelineRunsFromStorage = () => {
+    setGuidelineRuns(
+      listStoredRuns().filter((run) =>
+        (run.document_ids ?? []).some((documentId) =>
+          contractDocumentIds.includes(documentId),
+        ),
+      ),
+    );
+  };
+
+  const removeGuidelineRunsFromStorage = (checkIds: string[]) => {
+    deleteStoredRuns(checkIds);
+    deleteStoredResultsMany(checkIds);
+    setSelectedGuidelineRunIds((current) =>
+      current.filter((checkId) => !checkIds.includes(checkId)),
+    );
+    refreshGuidelineRunsFromStorage();
+  };
+
+  const deleteGuidelineRuns = async (runs: StoredCheckRun[]) => {
+    if (runs.length === 0 || deletingGuidelines) {
+      return;
+    }
+
+    const ids = runs.map((run) => run.check_id);
+    const remoteRuns = runs.filter((run) => run.execution_mode !== "local");
+    const localRuns = runs.filter((run) => run.execution_mode === "local");
+    const confirmMessage =
+      runs.length === 1
+        ? `Delete "${runs[0].rule_name ?? "this guideline check"}"?`
+        : `Delete ${runs.length} selected guideline checks?`;
+
+    if (!window.confirm(`${confirmMessage}\n\nThis cannot be undone.`)) {
+      return;
+    }
+
+    setDeletingGuidelines(true);
+    setGuidelineError(null);
+    setMessage(null);
+
+    try {
+      if (remoteRuns.length === 1) {
+        await apiClient.deleteCheckRun(remoteRuns[0].check_id);
+      } else if (remoteRuns.length > 1) {
+        await apiClient.deleteCheckRuns({
+          check_ids: remoteRuns.map((run) => run.check_id),
+        });
+      }
+
+      removeGuidelineRunsFromStorage(ids);
+      setMessage(
+        runs.length === 1
+          ? "Guideline check removed."
+          : `${runs.length} guideline checks removed.`,
+      );
+    } catch (err) {
+      const fallback =
+        remoteRuns.length > 0
+          ? "Failed to delete guideline checks."
+          : "Failed to remove local guideline checks.";
+      setGuidelineError(err instanceof Error ? err.message : fallback);
+      if (localRuns.length > 0 && remoteRuns.length === 0) {
+        removeGuidelineRunsFromStorage(ids);
+      }
+    } finally {
+      setDeletingGuidelines(false);
+    }
+  };
+
   const saveContractDetails = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!contractId || !contract) return;
@@ -533,13 +686,15 @@ export function ContractEditPage() {
         tags: contractTagsInput
           .split(",")
           .map((tag) => tag.trim())
-          .filter((tag) => tag.length > 0)
+          .filter((tag) => tag.length > 0),
       });
       setContract(updated);
       setFiles(updated.files ?? []);
       setMessage("Contract details saved.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save contract details.");
+      setError(
+        err instanceof Error ? err.message : "Failed to save contract details.",
+      );
     } finally {
       setSavingDetails(false);
     }
@@ -553,7 +708,7 @@ export function ContractEditPage() {
     try {
       const updated = await apiClient.reorderContractFiles(
         contractId,
-        files.map((item) => item.id)
+        files.map((item) => item.id),
       );
       setContract(updated);
       setFiles(updated.files ?? []);
@@ -574,7 +729,8 @@ export function ContractEditPage() {
         file.type !== "application/pdf" &&
         file.type !== "image/jpeg" &&
         file.type !== "image/png" &&
-        file.type !== "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        file.type !==
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
       ) {
         setError("Only PDF, JPEG, PNG, and DOCX files are supported.");
         return;
@@ -594,7 +750,7 @@ export function ContractEditPage() {
             | "image/jpeg"
             | "image/png"
             | "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          content_base64: contentBase64
+          content_base64: contentBase64,
         });
       }
       setNewFiles([]);
@@ -623,8 +779,8 @@ export function ContractEditPage() {
       {
         id: `user-${Date.now()}`,
         role: "user",
-        content: question
-      }
+        content: question,
+      },
     ];
 
     setChatMessages(nextMessages);
@@ -634,21 +790,27 @@ export function ContractEditPage() {
 
     try {
       const response = await apiClient.chatWithContract(contractId, {
-        messages: buildChatPayload(nextMessages)
+        messages: buildChatPayload(nextMessages),
       });
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
         role: "assistant",
         content: response.answer,
-        citations: response.citations
+        citations: response.citations,
       };
       setChatMessages([...nextMessages, assistantMessage]);
       setActiveCitations(response.citations);
       setDisplayMode("text");
       const firstCitation = response.citations[0];
-      setActiveCitationId(firstCitation ? `${firstCitation.document_id}-0` : null);
+      setActiveCitationId(
+        firstCitation ? `${firstCitation.document_id}-0` : null,
+      );
     } catch (err) {
-      setChatError(err instanceof Error ? err.message : "Failed to ask the contract assistant.");
+      setChatError(
+        err instanceof Error
+          ? err.message
+          : "Failed to ask the contract assistant.",
+      );
     } finally {
       setChatLoading(false);
     }
@@ -671,7 +833,10 @@ export function ContractEditPage() {
           <form className="form-grid" onSubmit={saveContractDetails}>
             <label>
               Contract Name
-              <input value={contractNameInput} onChange={(event) => setContractNameInput(event.target.value)} />
+              <input
+                value={contractNameInput}
+                onChange={(event) => setContractNameInput(event.target.value)}
+              />
             </label>
             <label>
               Tags
@@ -682,13 +847,21 @@ export function ContractEditPage() {
               />
             </label>
             <div className="page-actions">
-              <button type="submit" disabled={savingDetails || !hasUnsavedDetails || contractNameInput.trim().length === 0}>
+              <button
+                type="submit"
+                disabled={
+                  savingDetails ||
+                  !hasUnsavedDetails ||
+                  contractNameInput.trim().length === 0
+                }
+              >
                 {savingDetails ? "Saving..." : "Save Details"}
               </button>
             </div>
           </form>
           <p className="muted">
-            Contract ID: <code>{contract.id}</code> | Files: {files.length} | Updated: {formatEuropeanDateTime(contract.updated_at)}
+            Contract ID: <code>{contract.id}</code> | Files: {files.length} |
+            Updated: {formatEuropeanDateTime(contract.updated_at)}
           </p>
         </section>
       ) : null}
@@ -697,8 +870,13 @@ export function ContractEditPage() {
         <div className="contract-detail-column">
           <section className="panel">
             <h3>Files</h3>
-            <p className="muted">Drag and drop files to reorder pages/attachments inside this contract.</p>
-            {files.length === 0 ? <p className="muted">No files uploaded yet.</p> : null}
+            <p className="muted">
+              Drag and drop files to reorder pages/attachments inside this
+              contract.
+            </p>
+            {files.length === 0 ? (
+              <p className="muted">No files uploaded yet.</p>
+            ) : null}
             <div className="contract-file-list">
               {files.map((file, index) => (
                 <div
@@ -720,7 +898,9 @@ export function ContractEditPage() {
                   <span className="order-index">{index + 1}.</span>
                   <span className="file-name">{file.filename}</span>
                   <span className="file-meta">
-                    <span className="file-mime">{formatMimeTypeLabel(file.mime_type)}</span>
+                    <span className="file-mime">
+                      {formatMimeTypeLabel(file.mime_type)}
+                    </span>
                     <span
                       className={`chip chip-compact ${
                         file.status === "indexed"
@@ -752,30 +932,46 @@ export function ContractEditPage() {
               }}
             >
               <h3>Add More Files</h3>
-              <p className="muted">Drag and drop files here to add them to the bottom, or choose files manually.</p>
+              <p className="muted">
+                Drag and drop files here to add them to the bottom, or choose
+                files manually.
+              </p>
               <label>
                 Files
                 <input
                   type="file"
                   accept="application/pdf,image/jpeg,image/png,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"
                   multiple
-                  onChange={(event) => appendFiles(Array.from(event.target.files ?? []))}
+                  onChange={(event) =>
+                    appendFiles(Array.from(event.target.files ?? []))
+                  }
                 />
               </label>
-              {newFiles.length > 0 ? <p className="muted">Queued: {newFiles.length} file(s)</p> : null}
-              <button type="submit" disabled={uploading || newFiles.length === 0}>
+              {newFiles.length > 0 ? (
+                <p className="muted">Queued: {newFiles.length} file(s)</p>
+              ) : null}
+              <button
+                type="submit"
+                disabled={uploading || newFiles.length === 0}
+              >
                 {uploading ? "Uploading..." : "Upload Files"}
               </button>
             </form>
 
             <div className="page-actions">
-              <button type="button" className="secondary" onClick={saveOrder} disabled={!hasUnsavedOrder || savingOrder}>
+              <button
+                type="button"
+                className="secondary"
+                onClick={saveOrder}
+                disabled={!hasUnsavedOrder || savingOrder}
+              >
                 {savingOrder ? "Saving..." : "Save Order"}
               </button>
             </div>
             <p className="muted">
-              Indexing summary: {statusSummary.indexed} indexed, {statusSummary.processing + statusSummary.ingested} in
-              progress, {statusSummary.failed} failed.
+              Indexing summary: {statusSummary.indexed} indexed,{" "}
+              {statusSummary.processing + statusSummary.ingested} in progress,{" "}
+              {statusSummary.failed} failed.
             </p>
           </section>
 
@@ -783,15 +979,55 @@ export function ContractEditPage() {
             <div className="guideline-section-header">
               <div>
                 <h3>Guideline Checks</h3>
-                <p className="muted">Automatic and manual guideline checks for the files in this contract.</p>
+                <p className="muted">
+                  Automatic and manual guideline checks for the files in this
+                  contract.
+                </p>
               </div>
-              <Link to="/guidelines/run" className="button-link secondary">
-                Run Guideline
-              </Link>
+              <div className="page-actions">
+                {guidelineRuns.length > 0 ? (
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() =>
+                      setSelectedGuidelineRunIds(
+                        allGuidelineRunsSelected
+                          ? []
+                          : guidelineRuns.map((run) => run.check_id),
+                      )
+                    }
+                    disabled={deletingGuidelines}
+                  >
+                    {allGuidelineRunsSelected
+                      ? "Clear Selection"
+                      : "Select All"}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() =>
+                    void deleteGuidelineRuns(selectedGuidelineRuns)
+                  }
+                  disabled={
+                    deletingGuidelines || selectedGuidelineRuns.length === 0
+                  }
+                >
+                  {deletingGuidelines
+                    ? "Deleting..."
+                    : `Delete Selected (${selectedGuidelineRuns.length})`}
+                </button>
+                <Link to="/guidelines/run" className="button-link secondary">
+                  Run Guideline
+                </Link>
+              </div>
             </div>
             {pendingAutoRuns.length > 0 ? (
               <p className="muted">
-                {files.some((file) => file.status === "ingested" || file.status === "processing")
+                {files.some(
+                  (file) =>
+                    file.status === "ingested" || file.status === "processing",
+                )
                   ? `${pendingAutoRuns.length} automatic guideline check(s) will start once file processing finishes.`
                   : startingAutoGuidelines
                     ? `Starting ${pendingAutoRuns.length} automatic guideline check(s)...`
@@ -799,39 +1035,81 @@ export function ContractEditPage() {
               </p>
             ) : null}
             {guidelineRuns.length === 0 && pendingAutoRuns.length === 0 ? (
-              <p className="muted">No guideline checks for this contract yet.</p>
+              <p className="muted">
+                No guideline checks for this contract yet.
+              </p>
             ) : null}
             {guidelineRuns.length > 0 ? (
               <ul className="run-list">
                 {guidelineRuns.map((run) => {
                   const cachedResults = getStoredResults(run.check_id);
                   const flaggedCount =
-                    cachedResults?.items.filter((item) => item.outcome === "missing" || item.outcome === "review")
-                      .length ?? 0;
+                    cachedResults?.items.filter(
+                      (item) =>
+                        item.outcome === "missing" || item.outcome === "review",
+                    ).length ?? 0;
+                  const isSelected = selectedGuidelineRunIds.includes(
+                    run.check_id,
+                  );
 
                   return (
                     <li key={run.check_id}>
-                      <Link to={`/guidelines?checkId=${encodeURIComponent(run.check_id)}`} className="run-item">
-                        <span className="guideline-run-item-copy">
-                          <span className="guideline-run-item-title">
-                            <span className="guideline-run-status-emoji" aria-hidden="true">
-                              {formatGuidelineRunStatusEmoji(run.status)}
+                      <div className="run-row">
+                        <label className="run-select">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(event) => {
+                              setSelectedGuidelineRunIds((current) =>
+                                event.target.checked
+                                  ? [...current, run.check_id]
+                                  : current.filter(
+                                      (checkId) => checkId !== run.check_id,
+                                    ),
+                              );
+                            }}
+                            aria-label={`Select ${run.rule_name ?? "guideline check"}`}
+                            disabled={deletingGuidelines}
+                          />
+                        </label>
+                        <Link
+                          to={`/guidelines?checkId=${encodeURIComponent(run.check_id)}`}
+                          className="run-item"
+                        >
+                          <span className="guideline-run-item-copy">
+                            <span className="guideline-run-item-title">
+                              <span
+                                className="guideline-run-status-emoji"
+                                aria-hidden="true"
+                              >
+                                {formatGuidelineRunStatusEmoji(run.status)}
+                              </span>
+                              <span>{run.rule_name ?? "Guideline run"}</span>
                             </span>
-                            <span>{run.rule_name ?? "Guideline run"}</span>
+                            <small>
+                              {run.status === "completed" && cachedResults
+                                ? `Flagged items: ${flaggedCount}`
+                                : `Created ${formatEuropeanDateTime(run.requested_at)}`}
+                            </small>
                           </span>
-                          <small>
-                            {run.status === "completed" && cachedResults
-                              ? `Flagged items: ${flaggedCount}`
-                              : `Created ${formatEuropeanDateTime(run.requested_at)}`}
-                          </small>
-                        </span>
-                      </Link>
+                        </Link>
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => void deleteGuidelineRuns([run])}
+                          disabled={deletingGuidelines}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </li>
                   );
                 })}
               </ul>
             ) : null}
-            {guidelineError ? <p className="error-text">{guidelineError}</p> : null}
+            {guidelineError ? (
+              <p className="error-text">{guidelineError}</p>
+            ) : null}
           </section>
 
           {creationNotice ? (
@@ -854,18 +1132,30 @@ export function ContractEditPage() {
           {error ? <p className="error-text">{error}</p> : null}
         </div>
 
-        <section className="panel contract-text-panel" style={contractTextStyle}>
+        <section
+          className="panel contract-text-panel"
+          style={contractTextStyle}
+        >
           <div className="contract-text-panel-header">
             <div>
-              <h3>{displayMode === "text" ? "Contract Text" : "Original Files"}</h3>
+              <h3>
+                {displayMode === "text" ? "Contract Text" : "Original Files"}
+              </h3>
               <p className="muted">
                 {displayMode === "text"
                   ? "Combined extracted text from all files, shown in reading order."
                   : "Original uploaded files shown inline in contract order."}
               </p>
             </div>
-            <div className="contract-text-controls" aria-label="Contract text display controls">
-              <div className="segmented-control" role="tablist" aria-label="Contract display mode">
+            <div
+              className="contract-text-controls"
+              aria-label="Contract text display controls"
+            >
+              <div
+                className="segmented-control"
+                role="tablist"
+                aria-label="Contract display mode"
+              >
                 <button
                   type="button"
                   className={displayMode === "text" ? "is-active" : ""}
@@ -893,7 +1183,9 @@ export function ContractEditPage() {
                       max="1.5"
                       step="0.05"
                       value={textFontSize}
-                      onChange={(event) => setTextFontSize(Number(event.target.value))}
+                      onChange={(event) =>
+                        setTextFontSize(Number(event.target.value))
+                      }
                     />
                   </label>
                   <label className="contract-text-control">
@@ -904,21 +1196,36 @@ export function ContractEditPage() {
                       max="2.4"
                       step="0.1"
                       value={textLineHeight}
-                      onChange={(event) => setTextLineHeight(Number(event.target.value))}
+                      onChange={(event) =>
+                        setTextLineHeight(Number(event.target.value))
+                      }
                     />
                   </label>
                 </>
               ) : null}
             </div>
           </div>
-          {displayMode === "text" && textLoading ? <p className="muted">Loading contract text...</p> : null}
-          {displayMode === "text" && textError ? <p className="error-text">{textError}</p> : null}
+          {displayMode === "text" && textLoading ? (
+            <p className="muted">Loading contract text...</p>
+          ) : null}
+          {displayMode === "text" && textError ? (
+            <p className="error-text">{textError}</p>
+          ) : null}
           {displayMode === "text" && !textLoading && !textError ? (
             <>
-              {files.length === 0 ? <p className="muted">No files yet, so there is no text to show.</p> : null}
+              {files.length === 0 ? (
+                <p className="muted">
+                  No files yet, so there is no text to show.
+                </p>
+              ) : null}
               {files.map((file, index) => {
                 const entry = documentTexts[file.id];
-                const locatedCitations = entry?.has_text ? locateCitations(entry.text, locatedCitationsByDocumentId[file.id] ?? []) : [];
+                const locatedCitations = entry?.has_text
+                  ? locateCitations(
+                      entry.text,
+                      locatedCitationsByDocumentId[file.id] ?? [],
+                    )
+                  : [];
                 return (
                   <section key={file.id} className="word-document-section">
                     <div className="word-document-label">
@@ -928,27 +1235,43 @@ export function ContractEditPage() {
                       {entry?.has_text ? (
                         <>
                           {locatedCitations.length > 0 ? (
-                            <div className="contract-chat-citation-strip" aria-label={`Highlights for ${file.filename}`}>
-                              {locatedCitations.map((citation, citationIndex) => (
-                                <button
-                                  key={citation.id}
-                                  type="button"
-                                  className={`contract-chat-citation-pill contract-chat-citation-pill-${citation.colorIndex}${
-                                    activeCitationId === citation.id ? " is-active" : ""
-                                  }`}
-                                  onClick={() => setActiveCitationId(citation.id)}
-                                >
-                                  {citationIndex + 1}. {citation.reason || "Referenced clause"}
-                                </button>
-                              ))}
+                            <div
+                              className="contract-chat-citation-strip"
+                              aria-label={`Highlights for ${file.filename}`}
+                            >
+                              {locatedCitations.map(
+                                (citation, citationIndex) => (
+                                  <button
+                                    key={citation.id}
+                                    type="button"
+                                    className={`contract-chat-citation-pill contract-chat-citation-pill-${citation.colorIndex}${
+                                      activeCitationId === citation.id
+                                        ? " is-active"
+                                        : ""
+                                    }`}
+                                    onClick={() =>
+                                      setActiveCitationId(citation.id)
+                                    }
+                                  >
+                                    {citationIndex + 1}.{" "}
+                                    {citation.reason || "Referenced clause"}
+                                  </button>
+                                ),
+                              )}
                             </div>
                           ) : null}
                           <p className="word-document-text">
-                            {renderHighlightedContractText(entry.text, locatedCitations, activeCitationId)}
+                            {renderHighlightedContractText(
+                              entry.text,
+                              locatedCitations,
+                              activeCitationId,
+                            )}
                           </p>
                         </>
                       ) : (
-                        <p className="muted">No extracted text available for this file yet.</p>
+                        <p className="muted">
+                          No extracted text available for this file yet.
+                        </p>
                       )}
                     </article>
                   </section>
@@ -958,7 +1281,11 @@ export function ContractEditPage() {
           ) : null}
           {displayMode === "original" ? (
             <>
-              {files.length === 0 ? <p className="muted">No files yet, so there is nothing to preview.</p> : null}
+              {files.length === 0 ? (
+                <p className="muted">
+                  No files yet, so there is nothing to preview.
+                </p>
+              ) : null}
               {files.map((file, index) => {
                 const contentUrl = apiClient.getDocumentContentUrl(file.id);
                 return (
@@ -973,10 +1300,17 @@ export function ContractEditPage() {
                           src={contentUrl}
                           title={`Original preview for ${file.filename}`}
                         />
-                      ) : file.mime_type === "image/jpeg" || file.mime_type === "image/png" ? (
-                        <img className="original-document-image" src={contentUrl} alt={file.filename} />
+                      ) : file.mime_type === "image/jpeg" ||
+                        file.mime_type === "image/png" ? (
+                        <img
+                          className="original-document-image"
+                          src={contentUrl}
+                          alt={file.filename}
+                        />
                       ) : (
-                        <p className="muted">Inline preview is not available for this file type.</p>
+                        <p className="muted">
+                          Inline preview is not available for this file type.
+                        </p>
                       )}
                     </article>
                   </section>
@@ -989,7 +1323,10 @@ export function ContractEditPage() {
 
       <div className="contract-chat-dock">
         {chatOpen ? (
-          <section className="contract-chat-panel" aria-label="Contract assistant">
+          <section
+            className="contract-chat-panel"
+            aria-label="Contract assistant"
+          >
             <header className="contract-chat-header">
               <div className="contract-chat-title">
                 <span className="contract-chat-title-icon" aria-hidden="true">
@@ -1011,18 +1348,23 @@ export function ContractEditPage() {
             <div className="contract-chat-body" ref={chatBodyRef}>
               {chatMessages.length === 0 ? (
                 <div className="contract-chat-message contract-chat-message-assistant">
-                  Ask about clauses, obligations, dates, termination rights, or missing language.
+                  Ask about clauses, obligations, dates, termination rights, or
+                  missing language.
                 </div>
               ) : null}
               {chatMessages.map((message) => (
                 <div
                   key={message.id}
                   className={`contract-chat-message ${
-                    message.role === "user" ? "contract-chat-message-user" : "contract-chat-message-assistant"
+                    message.role === "user"
+                      ? "contract-chat-message-user"
+                      : "contract-chat-message-assistant"
                   }`}
                 >
                   <p>{message.content}</p>
-                  {message.role === "assistant" && message.citations && message.citations.length > 0 ? (
+                  {message.role === "assistant" &&
+                  message.citations &&
+                  message.citations.length > 0 ? (
                     <div className="contract-chat-citations">
                       {message.citations.map((citation, index) => {
                         const citationId = `${citation.document_id}-${index}`;
@@ -1031,7 +1373,9 @@ export function ContractEditPage() {
                             key={`${message.id}-${citationId}`}
                             type="button"
                             className={`contract-chat-citation-pill contract-chat-citation-pill-${index % 4}${
-                              activeCitationId === citationId ? " is-active" : ""
+                              activeCitationId === citationId
+                                ? " is-active"
+                                : ""
                             }`}
                             onClick={() => {
                               setDisplayMode("text");
@@ -1039,7 +1383,8 @@ export function ContractEditPage() {
                               setActiveCitationId(citationId);
                             }}
                           >
-                            {citation.filename || "Contract text"}: {citation.reason || "Show support"}
+                            {citation.filename || "Contract text"}:{" "}
+                            {citation.reason || "Show support"}
                           </button>
                         );
                       })}
@@ -1065,7 +1410,10 @@ export function ContractEditPage() {
                   placeholder="What does this contract say about termination, payment, liability..."
                   rows={3}
                 />
-                <button type="submit" disabled={chatLoading || chatInput.trim().length === 0}>
+                <button
+                  type="submit"
+                  disabled={chatLoading || chatInput.trim().length === 0}
+                >
                   {chatLoading ? "Asking..." : "Ask"}
                 </button>
               </div>

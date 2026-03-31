@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"legal-doc-intel/go-api/internal/db"
@@ -594,6 +595,33 @@ func (a *API) deleteContractState(ctx context.Context, contractID string) error 
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM contracts WHERE id = $1`, contractID); err != nil {
 		return fmt.Errorf("delete contract row: %w", err)
+	}
+	return tx.Commit(ctx)
+}
+
+func (a *API) deleteChecksState(ctx context.Context, checkIDs []string) error {
+	conn := a.pgPool()
+	if conn == nil || len(checkIDs) == 0 {
+		return nil
+	}
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin delete checks tx: %w", err)
+	}
+	defer rollbackTx(ctx, tx)
+
+	params := make([]any, 0, len(checkIDs))
+	placeholders := make([]string, 0, len(checkIDs))
+	for index, checkID := range checkIDs {
+		params = append(params, checkID)
+		placeholders = append(placeholders, fmt.Sprintf("$%d", index+1))
+	}
+
+	if _, err := tx.Exec(ctx,
+		fmt.Sprintf(`DELETE FROM check_runs WHERE id IN (%s)`, strings.Join(placeholders, ", ")),
+		params...,
+	); err != nil {
+		return fmt.Errorf("delete checks: %w", err)
 	}
 	return tx.Commit(ctx)
 }

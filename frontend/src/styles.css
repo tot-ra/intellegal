@@ -37,21 +37,17 @@ body {
   margin: 0;
   color: var(--text);
   background:
-    radial-gradient(circle at 14% 12%, rgba(83, 159, 250, 0.26), transparent 36%),
-    radial-gradient(circle at 88% 6%, rgba(89, 203, 179, 0.23), transparent 32%),
+    radial-gradient(
+      circle at 14% 12%,
+      rgba(83, 159, 250, 0.26),
+      transparent 36%
+    ),
+    radial-gradient(
+      circle at 88% 6%,
+      rgba(89, 203, 179, 0.23),
+      transparent 32%
+    ),
     linear-gradient(160deg, var(--bg) 0%, var(--bg-soft) 56%, #f8fcff 100%);
-}
-
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background-image: linear-gradient(rgba(51, 83, 163, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(51, 83, 163, 0.06) 1px, transparent 1px);
-  background-size: 28px 28px;
-  mask-image: radial-gradient(circle at 50% 30%, #000 35%, transparent 85%);
-  opacity: 0.45;
 }
 
 a {
@@ -291,7 +287,10 @@ button {
   margin-top: 1rem;
   background: var(--panel-strong);
   box-shadow: 0 10px 20px -20px rgba(38, 74, 151, 0.75);
-  transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition),
+    transform var(--transition);
 }
 
 .panel:hover {
@@ -343,7 +342,9 @@ textarea {
   padding: 0.56rem 0.62rem;
   background: #fdfdff;
   color: var(--text);
-  transition: border-color var(--transition), box-shadow var(--transition);
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition);
 }
 
 input:focus,
@@ -367,7 +368,10 @@ button {
   padding: 0.52rem 0.86rem;
   font-weight: 700;
   cursor: pointer;
-  transition: transform var(--transition), box-shadow var(--transition), filter var(--transition);
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition),
+    filter var(--transition);
 }
 
 button:hover {
@@ -399,7 +403,10 @@ button.danger {
   padding: 0.52rem 0.86rem;
   font-weight: 700;
   cursor: pointer;
-  transition: transform var(--transition), box-shadow var(--transition), filter var(--transition);
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition),
+    filter var(--transition);
 }
 
 .button-link:hover {
@@ -588,6 +595,24 @@ th {
   padding: 0;
   display: grid;
   gap: 0.5rem;
+}
+
+.run-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.run-select {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.run-select input {
+  width: auto;
+  margin: 0;
 }
 
 .run-item {
@@ -1022,7 +1047,10 @@ th {
   background: #f7faff;
   padding: 0.85rem;
   margin-bottom: 0.8rem;
-  transition: border-color var(--transition), background-color var(--transition), box-shadow var(--transition);
+  transition:
+    border-color var(--transition),
+    background-color var(--transition),
+    box-shadow var(--transition);
 }
 
 .file-upload-dropzone.is-drag-over {
@@ -1238,7 +1266,9 @@ th {
 .word-document-label {
   margin: 0 0 0.45rem;
   color: #5c6d94;
-  font-family: "JetBrains Mono", "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", monospace;
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono",
+    monospace;
   font-size: 0.76rem;
   line-height: 1.4;
   letter-spacing: 0.02em;
@@ -1358,7 +1388,11 @@ th {
   grid-template-rows: auto minmax(0, 1fr) auto;
   border: 1px solid #c5d3eb;
   border-radius: 20px;
-  background: linear-gradient(180deg, rgba(252, 253, 255, 0.98) 0%, rgba(244, 248, 255, 0.98) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(252, 253, 255, 0.98) 0%,
+    rgba(244, 248, 255, 0.98) 100%
+  );
   box-shadow: 0 28px 64px -36px rgba(18, 36, 69, 0.58);
   backdrop-filter: blur(12px);
   overflow: hidden;
@@ -1584,6 +1618,19 @@ th {
   margin-top: 0.5rem;
   display: grid;
   gap: 0.75rem;
+}
+
+.search-query-summary {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.search-query-summary .muted {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
 }
 
 .search-results-grid {
@@ -1831,8 +1878,9 @@ th {
 }
 
 code {
-  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
-    monospace;
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
   font-size: 0.9em;
   background: rgba(95, 126, 191, 0.12);
   border-radius: 8px;

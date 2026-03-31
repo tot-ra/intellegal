@@ -122,6 +122,7 @@ func TestDocumentAndCheckFlow_CreatesDocumentsAndReturnsCompletedResults(t *test
 	// Arrange
 	log := logging.NewDiscard(logger.New(logger.LoggerConfig{}))
 	api := handlers.NewAPI(log, &fakeAIClient{}, nil, nil)
+	api.EnableInMemoryReadersForTesting()
 	ts := httptest.NewServer(router.New(log, api, nil, []string{"http://localhost:3000"}))
 	defer ts.Close()
 

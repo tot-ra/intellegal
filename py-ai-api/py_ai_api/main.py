@@ -113,6 +113,7 @@ class SearchSectionsJobRequest(BaseModel):
     document_ids: list[str] | None = None
     limit: int = 10
     strategy: Literal["semantic", "strict"] = "semantic"
+    result_mode: Literal["sections", "contracts"] = "sections"
 
 
 class ContractChatMessage(BaseModel):
@@ -401,6 +402,7 @@ def start_search_sections_job(
         document_ids=payload.document_ids,
         limit=max(1, min(payload.limit, 50)),
         strategy=payload.strategy,
+        result_mode=payload.result_mode,
     )
     return AcceptedJobResponse(
         job_id=payload.job_id,
