@@ -8,16 +8,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"legal-doc-intel/go-api/internal/ai"
 	"legal-doc-intel/go-api/internal/checksum"
+	"legal-doc-intel/go-api/internal/db"
 	"legal-doc-intel/go-api/internal/externalcopy"
 	"legal-doc-intel/go-api/internal/http/middleware"
 	"legal-doc-intel/go-api/internal/ids"
+	"legal-doc-intel/go-api/internal/models"
 )
 
 func (a *API) CreateDocument(w http.ResponseWriter, r *http.Request) {
@@ -77,37 +78,32 @@ func (a *API) ListDocuments(w http.ResponseWriter, r *http.Request) {
 		offset = n
 	}
 
-	a.mu.RLock()
-	items := make([]document, 0, len(a.documents))
-	for _, doc := range a.documents {
-		if status != "" && doc.Status != status {
-			continue
-		}
-		if sourceType != "" && doc.SourceType != sourceType {
-			continue
-		}
-		if len(tagFilters) > 0 && !documentHasAnyTag(doc, tagFilters) {
-			continue
-		}
-		items = append(items, doc)
-	}
-	a.mu.RUnlock()
-
-	sort.Slice(items, func(i, j int) bool { return items[i].CreatedAt.After(items[j].CreatedAt) })
-	total := len(items)
-	if offset > total {
-		offset = total
-	}
-	end := offset + limit
-	if end > total {
-		end = total
+	if a.documentsModel == nil {
+		writeError(w, http.StatusServiceUnavailable, "service_unavailable", "database is not configured", true, nil)
+		return
 	}
 
-	respItems := make([]documentResponse, 0, end-offset)
-	for _, doc := range items[offset:end] {
-		respItems = append(respItems, mapDocument(doc))
+	items, total, err := a.documentsModel.List(r.Context(), models.DocumentsListFilter{
+		Status:     status,
+		SourceType: sourceType,
+		Tags:       tagFilters,
+		Limit:      limit,
+		Offset:     offset,
+	})
+	if err != nil {
+		if errors.Is(err, db.ErrNotConfigured) {
+			writeError(w, http.StatusServiceUnavailable, "service_unavailable", "database is not configured", true, nil)
+			return
+		}
+		a.logger.Error("list documents query failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to load documents", true, nil)
+		return
 	}
 
+	respItems := make([]documentResponse, 0, len(items))
+	for _, doc := range items {
+		respItems = append(respItems, mapDocument(documentFromModel(doc)))
+	}
 	writeJSON(w, http.StatusOK, documentListResponse{Items: respItems, Limit: limit, Offset: offset, Total: total})
 }
 
@@ -118,15 +114,27 @@ func (a *API) GetDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.mu.RLock()
-	doc, ok := a.documents[documentID]
-	a.mu.RUnlock()
+	if a.documentsModel == nil {
+		writeError(w, http.StatusServiceUnavailable, "service_unavailable", "database is not configured", true, nil)
+		return
+	}
+
+	doc, ok, err := a.documentsModel.Get(r.Context(), documentID)
+	if err != nil {
+		if errors.Is(err, db.ErrNotConfigured) {
+			writeError(w, http.StatusServiceUnavailable, "service_unavailable", "database is not configured", true, nil)
+			return
+		}
+		a.logger.Error("get document query failed", "document_id", documentID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to load document", true, nil)
+		return
+	}
 	if !ok {
 		writeError(w, http.StatusNotFound, "not_found", "document not found", false, nil)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, mapDocument(doc))
+	writeJSON(w, http.StatusOK, mapDocument(documentFromModel(doc)))
 }
 
 func (a *API) DeleteDocument(w http.ResponseWriter, r *http.Request) {
@@ -224,9 +232,21 @@ func (a *API) GetDocumentText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.mu.RLock()
-	doc, ok := a.documents[documentID]
-	a.mu.RUnlock()
+	if a.documentsModel == nil {
+		writeError(w, http.StatusServiceUnavailable, "service_unavailable", "database is not configured", true, nil)
+		return
+	}
+
+	doc, ok, err := a.documentsModel.Get(r.Context(), documentID)
+	if err != nil {
+		if errors.Is(err, db.ErrNotConfigured) {
+			writeError(w, http.StatusServiceUnavailable, "service_unavailable", "database is not configured", true, nil)
+			return
+		}
+		a.logger.Error("get document text query failed", "document_id", documentID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to load document", true, nil)
+		return
+	}
 	if !ok {
 		writeError(w, http.StatusNotFound, "not_found", "document not found", false, nil)
 		return
@@ -248,9 +268,21 @@ func (a *API) GetDocumentContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.mu.RLock()
-	doc, ok := a.documents[documentID]
-	a.mu.RUnlock()
+	if a.documentsModel == nil {
+		writeError(w, http.StatusServiceUnavailable, "service_unavailable", "database is not configured", true, nil)
+		return
+	}
+
+	doc, ok, err := a.documentsModel.Get(r.Context(), documentID)
+	if err != nil {
+		if errors.Is(err, db.ErrNotConfigured) {
+			writeError(w, http.StatusServiceUnavailable, "service_unavailable", "database is not configured", true, nil)
+			return
+		}
+		a.logger.Error("get document content query failed", "document_id", documentID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to load document", true, nil)
+		return
+	}
 	if !ok {
 		writeError(w, http.StatusNotFound, "not_found", "document not found", false, nil)
 		return
@@ -273,6 +305,11 @@ func (a *API) GetDocumentContent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) writeCreateDocumentError(w http.ResponseWriter, err error) {
+	if errors.Is(err, db.ErrNotConfigured) {
+		writeError(w, http.StatusServiceUnavailable, "service_unavailable", "database is not configured", true, nil)
+		return
+	}
+
 	switch err.Error() {
 	case "filename is required", "unsupported mime_type", "content_base64 must be valid base64", "unsupported source_type":
 		writeError(w, http.StatusBadRequest, "invalid_argument", err.Error(), false, nil)
@@ -323,9 +360,13 @@ func (a *API) createDocumentFromRequest(ctx context.Context, req createDocumentR
 		if !ids.IsUUID(contractID) {
 			return document{}, errors.New("contract_id must be a valid UUID")
 		}
-		a.mu.RLock()
-		_, exists := a.contracts[contractID]
-		a.mu.RUnlock()
+		if a.contractsModel == nil {
+			return document{}, db.ErrNotConfigured
+		}
+		_, exists, err := a.contractsModel.Get(ctx, contractID)
+		if err != nil {
+			return document{}, err
+		}
 		if !exists {
 			return document{}, errors.New("contract not found")
 		}

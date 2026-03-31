@@ -2,12 +2,13 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"legal-doc-intel/go-api/internal/db"
 	"legal-doc-intel/go-api/internal/http/middleware"
 	"legal-doc-intel/go-api/internal/ids"
 )
@@ -90,28 +91,34 @@ func (a *API) ListContracts(w http.ResponseWriter, r *http.Request) {
 		offset = n
 	}
 
-	a.mu.RLock()
-	items := make([]contract, 0, len(a.contracts))
-	for _, item := range a.contracts {
-		items = append(items, item)
-	}
-	a.mu.RUnlock()
-
-	sort.Slice(items, func(i, j int) bool { return items[i].CreatedAt.After(items[j].CreatedAt) })
-	total := len(items)
-	if offset > total {
-		offset = total
-	}
-	end := offset + limit
-	if end > total {
-		end = total
+	if a.contractsModel == nil {
+		writeError(w, http.StatusServiceUnavailable, "service_unavailable", "database is not configured", true, nil)
+		return
 	}
 
-	respItems := make([]contractResponse, 0, end-offset)
-	for _, item := range items[offset:end] {
-		respItems = append(respItems, mapContract(item, nil))
+	items, total, err := a.contractsModel.List(r.Context(), limit, offset)
+	if err != nil {
+		if errors.Is(err, db.ErrNotConfigured) {
+			writeError(w, http.StatusServiceUnavailable, "service_unavailable", "database is not configured", true, nil)
+			return
+		}
+		a.logger.Error("list contracts query failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to load contracts", true, nil)
+		return
 	}
-
+	respItems := make([]contractResponse, 0, len(items))
+	for _, item := range items {
+		respItems = append(respItems, contractResponse{
+			ID:         item.ID,
+			Name:       item.Name,
+			SourceType: item.SourceType,
+			SourceRef:  item.SourceRef,
+			Tags:       item.Tags,
+			FileCount:  item.FileCount,
+			CreatedAt:  item.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:  item.UpdatedAt.Format(time.RFC3339),
+		})
+	}
 	writeJSON(w, http.StatusOK, contractListResponse{Items: respItems, Limit: limit, Offset: offset, Total: total})
 }
 
@@ -122,22 +129,56 @@ func (a *API) GetContract(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.mu.RLock()
-	item, ok := a.contracts[contractID]
+	if a.contractsModel == nil {
+		writeError(w, http.StatusServiceUnavailable, "service_unavailable", "database is not configured", true, nil)
+		return
+	}
+
+	item, ok, err := a.contractsModel.Get(r.Context(), contractID)
+	if err != nil {
+		if errors.Is(err, db.ErrNotConfigured) {
+			writeError(w, http.StatusServiceUnavailable, "service_unavailable", "database is not configured", true, nil)
+			return
+		}
+		a.logger.Error("get contract query failed", "contract_id", contractID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to load contract", true, nil)
+		return
+	}
 	if !ok {
-		a.mu.RUnlock()
 		writeError(w, http.StatusNotFound, "not_found", "contract not found", false, nil)
 		return
 	}
-	files := make([]documentResponse, 0, len(item.FileIDs))
-	for _, fileID := range item.FileIDs {
-		if doc, exists := a.documents[fileID]; exists {
-			files = append(files, mapDocument(doc))
-		}
-	}
-	a.mu.RUnlock()
 
-	writeJSON(w, http.StatusOK, mapContract(item, files))
+	files := make([]documentResponse, 0, len(item.Files))
+	for _, file := range item.Files {
+		files = append(files, mapDocument(document{
+			ID:            file.ID,
+			ContractID:    file.ContractID,
+			SourceType:    file.SourceType,
+			SourceRef:     file.SourceRef,
+			Tags:          file.Tags,
+			Filename:      file.Filename,
+			MIMEType:      file.MIMEType,
+			Status:        file.Status,
+			Checksum:      file.Checksum,
+			ExtractedText: file.ExtractedText,
+			StorageKey:    file.StorageKey,
+			StorageURI:    file.StorageURI,
+			CreatedAt:     file.CreatedAt,
+			UpdatedAt:     file.UpdatedAt,
+		}))
+	}
+	writeJSON(w, http.StatusOK, contractResponse{
+		ID:         item.ID,
+		Name:       item.Name,
+		SourceType: item.SourceType,
+		SourceRef:  item.SourceRef,
+		Tags:       item.Tags,
+		FileCount:  len(item.Files),
+		Files:      files,
+		CreatedAt:  item.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:  item.UpdatedAt.Format(time.RFC3339),
+	})
 }
 
 func (a *API) UpdateContract(w http.ResponseWriter, r *http.Request) {

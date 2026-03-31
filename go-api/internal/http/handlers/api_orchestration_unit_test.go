@@ -256,6 +256,7 @@ func TestChatContract_BuildsAIRequestFromContractFiles(t *testing.T) {
 	// Arrange
 	aiClient := &capturingAIClient{}
 	api := NewAPI(noopLogger{}, aiClient, nil, nil)
+	useInMemoryReaders(api)
 
 	contractID := "00000000-0000-4000-8000-000000000031"
 	documentID := "00000000-0000-4000-8000-000000000032"
@@ -329,6 +330,7 @@ func TestRunLLMReviewCheck_PassesExtractedDocumentText(t *testing.T) {
 	// Arrange
 	aiClient := &capturingAIClient{}
 	api := NewAPI(noopLogger{}, aiClient, nil, nil)
+	useInMemoryReaders(api)
 
 	checkID := "00000000-0000-4000-8000-000000000031"
 	docID := "00000000-0000-4000-8000-000000000032"

@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
 	"legal-doc-intel/go-api/internal/ai"
+	"legal-doc-intel/go-api/internal/db"
 	"legal-doc-intel/go-api/internal/http/middleware"
 	"legal-doc-intel/go-api/internal/ids"
 )
@@ -184,13 +184,20 @@ func (a *API) SearchContracts(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		a.mu.RLock()
-		resolvedDocIDs = make([]string, 0, len(a.documents))
-		for id := range a.documents {
-			resolvedDocIDs = append(resolvedDocIDs, id)
+		if a.documentsModel == nil {
+			writeError(w, http.StatusServiceUnavailable, "service_unavailable", "database is not configured", true, nil)
+			return
 		}
-		a.mu.RUnlock()
-		sort.Strings(resolvedDocIDs)
+		resolvedDocIDs, err = a.documentsModel.ListIDs(r.Context())
+		if err != nil {
+			if errors.Is(err, db.ErrNotConfigured) {
+				writeError(w, http.StatusServiceUnavailable, "service_unavailable", "database is not configured", true, nil)
+				return
+			}
+			a.logger.Error("list document ids failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "internal_error", "failed to load documents", true, nil)
+			return
+		}
 	}
 
 	if len(resolvedDocIDs) == 0 {
@@ -212,10 +219,29 @@ func (a *API) SearchContracts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.mu.RLock()
+	docIDs := make([]string, 0, len(result.Items))
+	seenDocIDs := make(map[string]struct{}, len(result.Items))
+	for _, item := range result.Items {
+		if _, ok := seenDocIDs[item.DocumentID]; ok {
+			continue
+		}
+		seenDocIDs[item.DocumentID] = struct{}{}
+		docIDs = append(docIDs, item.DocumentID)
+	}
+	documentsByID, err := a.documentsModel.GetByIDs(r.Context(), docIDs)
+	if err != nil {
+		if errors.Is(err, db.ErrNotConfigured) {
+			writeError(w, http.StatusServiceUnavailable, "service_unavailable", "database is not configured", true, nil)
+			return
+		}
+		a.logger.Error("load documents for search results failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to load documents", true, nil)
+		return
+	}
+
 	items := make([]contractSearchResultItem, 0, len(result.Items))
 	for _, item := range result.Items {
-		doc, ok := a.documents[item.DocumentID]
+		doc, ok := documentsByID[item.DocumentID]
 		if !ok {
 			continue
 		}
@@ -229,7 +255,6 @@ func (a *API) SearchContracts(w http.ResponseWriter, r *http.Request) {
 			SnippetText: item.SnippetText,
 		})
 	}
-	a.mu.RUnlock()
 
 	writeJSON(w, http.StatusOK, contractSearchResponse{Items: items})
 }
@@ -294,39 +319,30 @@ func (a *API) createCheck(r *http.Request, checkType string, payload any, docume
 }
 
 func (a *API) resolveDocumentIDs(explicit []string) ([]string, error) {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-
-	documentIDs := explicit
-	if len(documentIDs) == 0 {
-		documentIDs = make([]string, 0, len(a.documents))
-		for id := range a.documents {
-			documentIDs = append(documentIDs, id)
+	if a.documentsModel == nil {
+		return nil, db.ErrNotConfigured
+	}
+	if len(explicit) == 0 {
+		documentIDs, err := a.documentsModel.ListIDs(context.Background())
+		if err != nil {
+			return nil, err
 		}
-		sort.Strings(documentIDs)
+		if len(documentIDs) == 0 {
+			return nil, fmt.Errorf("at least one document is required")
+		}
+		return documentIDs, nil
 	}
 
-	if len(documentIDs) == 0 {
+	if len(explicit) == 0 {
 		return nil, fmt.Errorf("at least one document is required")
 	}
 
-	seen := make(map[string]struct{}, len(documentIDs))
-	resolved := make([]string, 0, len(documentIDs))
-	for _, id := range documentIDs {
+	for _, id := range explicit {
 		if !ids.IsUUID(id) {
 			return nil, fmt.Errorf("document_id must be a valid UUID: %s", id)
 		}
-		if _, ok := a.documents[id]; !ok {
-			return nil, fmt.Errorf("document not found: %s", id)
-		}
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		resolved = append(resolved, id)
 	}
-	sort.Strings(resolved)
-	return resolved, nil
+	return a.documentsModel.ResolveIDs(context.Background(), explicit)
 }
 
 func (a *API) runClauseCheck(checkID string, req clauseCheckRequest, requestID string) {
@@ -388,9 +404,17 @@ func (a *API) runLLMReviewCheck(checkID string, req llmReviewCheckRequest, reque
 
 	a.mu.RLock()
 	run := a.checks[checkID]
+	a.mu.RUnlock()
+
+	docMap, err := a.documentsModel.GetByIDs(context.Background(), run.DocumentIDs)
+	if err != nil {
+		a.markCheckFailed(checkID, err)
+		return
+	}
+
 	documents := make([]ai.AnalyzeDocument, 0, len(run.DocumentIDs))
 	for _, documentID := range run.DocumentIDs {
-		doc, ok := a.documents[documentID]
+		doc, ok := docMap[documentID]
 		if !ok {
 			continue
 		}
@@ -400,7 +424,6 @@ func (a *API) runLLMReviewCheck(checkID string, req llmReviewCheckRequest, reque
 			Text:       doc.ExtractedText,
 		})
 	}
-	a.mu.RUnlock()
 
 	result, err := a.ai.AnalyzeLLMReview(context.Background(), ai.AnalyzeLLMReviewRequest{
 		JobID:        ids.NewUUID(),
@@ -512,6 +535,8 @@ func (a *API) emitAuditEvent(eventType, entityType, entityID string, payload map
 
 func handleCreateCheckError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, db.ErrNotConfigured):
+		writeError(w, http.StatusServiceUnavailable, "service_unavailable", "database is not configured", true, nil)
 	case errors.Is(err, errIdempotencyConflict):
 		writeError(w, http.StatusConflict, "idempotency_conflict", "Idempotency-Key is already used with a different payload", false, nil)
 	case strings.Contains(err.Error(), "document not found"):

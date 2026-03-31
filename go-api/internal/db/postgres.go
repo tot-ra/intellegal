@@ -2,39 +2,39 @@ package db
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Postgres wraps a SQL connection pool used by the Go API.
+// Postgres wraps a pgx connection pool used by the Go API.
 type Postgres struct {
-	conn *sql.DB
+	pool *pgxpool.Pool
 }
 
 func Open(databaseURL string) (*Postgres, error) {
-	conn, err := sql.Open("pgx", databaseURL)
+	pool, err := pgxpool.New(context.Background(), databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("open postgres: %w", err)
 	}
 
-	return &Postgres{conn: conn}, nil
+	return &Postgres{pool: pool}, nil
 }
 
 func (p *Postgres) Ping(ctx context.Context) error {
-	if p == nil || p.conn == nil {
+	if p == nil || p.pool == nil {
 		return fmt.Errorf("postgres is not initialized")
 	}
-	return p.conn.PingContext(ctx)
+	return p.pool.Ping(ctx)
 }
 
 func (p *Postgres) Close() error {
-	if p == nil || p.conn == nil {
+	if p == nil || p.pool == nil {
 		return nil
 	}
-	return p.conn.Close()
+	p.pool.Close()
+	return nil
 }
 
 func (p *Postgres) PingWithTimeout(timeout time.Duration) error {
@@ -43,9 +43,9 @@ func (p *Postgres) PingWithTimeout(timeout time.Duration) error {
 	return p.Ping(ctx)
 }
 
-func (p *Postgres) DB() *sql.DB {
+func (p *Postgres) Pool() *pgxpool.Pool {
 	if p == nil {
 		return nil
 	}
-	return p.conn
+	return p.pool
 }

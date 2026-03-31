@@ -2,13 +2,16 @@ package handlers
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"sort"
 	"time"
 
 	"legal-doc-intel/go-api/internal/db"
+	"legal-doc-intel/go-api/internal/models"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func (a *API) UsePostgres(pg *db.Postgres) error {
@@ -16,11 +19,13 @@ func (a *API) UsePostgres(pg *db.Postgres) error {
 		return nil
 	}
 	a.pg = pg
+	a.contractsModel = models.NewContracts(pg)
+	a.documentsModel = models.NewDocuments(pg)
 	return a.loadPersistedState(context.Background())
 }
 
 func (a *API) loadPersistedState(ctx context.Context) error {
-	conn := a.sqlDB()
+	conn := a.pgPool()
 	if conn == nil {
 		return nil
 	}
@@ -56,8 +61,8 @@ func (a *API) loadPersistedState(ctx context.Context) error {
 	return nil
 }
 
-func (a *API) loadContracts(ctx context.Context, conn *sql.DB) (map[string]contract, error) {
-	rows, err := conn.QueryContext(ctx, `
+func (a *API) loadContracts(ctx context.Context, conn *pgxpool.Pool) (map[string]contract, error) {
+	rows, err := conn.Query(ctx, `
 		SELECT id, name, source_type, COALESCE(source_ref, ''), COALESCE(tags::text, '[]'),
 		       created_at, updated_at
 		FROM contracts
@@ -86,8 +91,8 @@ func (a *API) loadContracts(ctx context.Context, conn *sql.DB) (map[string]contr
 	return contracts, rows.Err()
 }
 
-func (a *API) loadDocuments(ctx context.Context, conn *sql.DB, contracts map[string]contract) (map[string]document, error) {
-	rows, err := conn.QueryContext(ctx, `
+func (a *API) loadDocuments(ctx context.Context, conn *pgxpool.Pool, contracts map[string]contract) (map[string]document, error) {
+	rows, err := conn.Query(ctx, `
 		SELECT id, COALESCE(contract_id::text, ''), source_type, COALESCE(source_ref, ''), COALESCE(tags::text, '[]'),
 		       filename, mime_type, status, COALESCE(checksum, ''), COALESCE(extracted_text, ''),
 		       COALESCE(storage_key, ''), storage_uri, created_at, updated_at, file_order
@@ -170,8 +175,8 @@ func (a *API) loadDocuments(ctx context.Context, conn *sql.DB, contracts map[str
 	return documents, nil
 }
 
-func (a *API) loadChecks(ctx context.Context, conn *sql.DB) (map[string]checkRun, error) {
-	rows, err := conn.QueryContext(ctx, `
+func (a *API) loadChecks(ctx context.Context, conn *pgxpool.Pool) (map[string]checkRun, error) {
+	rows, err := conn.Query(ctx, `
 		SELECT id, status, check_type, requested_at, finished_at, COALESCE(failure_reason, '')
 		FROM check_runs
 		ORDER BY requested_at ASC`)
@@ -183,12 +188,12 @@ func (a *API) loadChecks(ctx context.Context, conn *sql.DB) (map[string]checkRun
 	checks := make(map[string]checkRun)
 	for rows.Next() {
 		var run checkRun
-		var finishedAt sql.NullTime
+		var finishedAt *time.Time
 		if err := rows.Scan(&run.CheckID, &run.Status, &run.CheckType, &run.RequestedAt, &finishedAt, &run.FailureReason); err != nil {
 			return nil, fmt.Errorf("scan check: %w", err)
 		}
-		if finishedAt.Valid {
-			run.FinishedAt = &finishedAt.Time
+		if finishedAt != nil {
+			run.FinishedAt = finishedAt
 		}
 		run.DocumentIDs, err = a.loadCheckDocumentIDs(ctx, conn, run.CheckID)
 		if err != nil {
@@ -203,8 +208,8 @@ func (a *API) loadChecks(ctx context.Context, conn *sql.DB) (map[string]checkRun
 	return checks, rows.Err()
 }
 
-func (a *API) loadCheckDocumentIDs(ctx context.Context, conn *sql.DB, checkID string) ([]string, error) {
-	rows, err := conn.QueryContext(ctx, `
+func (a *API) loadCheckDocumentIDs(ctx context.Context, conn *pgxpool.Pool, checkID string) ([]string, error) {
+	rows, err := conn.Query(ctx, `
 		SELECT document_id
 		FROM check_run_documents
 		WHERE check_run_id = $1
@@ -225,8 +230,8 @@ func (a *API) loadCheckDocumentIDs(ctx context.Context, conn *sql.DB, checkID st
 	return ids, rows.Err()
 }
 
-func (a *API) loadCheckItems(ctx context.Context, conn *sql.DB, checkID string) ([]checkResultItem, error) {
-	rows, err := conn.QueryContext(ctx, `
+func (a *API) loadCheckItems(ctx context.Context, conn *pgxpool.Pool, checkID string) ([]checkResultItem, error) {
+	rows, err := conn.Query(ctx, `
 		SELECT id, document_id, outcome, confidence, COALESCE(summary, '')
 		FROM check_results
 		WHERE check_run_id = $1
@@ -253,8 +258,8 @@ func (a *API) loadCheckItems(ctx context.Context, conn *sql.DB, checkID string) 
 	return items, rows.Err()
 }
 
-func (a *API) loadEvidence(ctx context.Context, conn *sql.DB, resultID string) ([]evidenceSnippet, error) {
-	rows, err := conn.QueryContext(ctx, `
+func (a *API) loadEvidence(ctx context.Context, conn *pgxpool.Pool, resultID string) ([]evidenceSnippet, error) {
+	rows, err := conn.Query(ctx, `
 		SELECT snippet_text, COALESCE(page_number, 1), COALESCE(chunk_ref, ''), COALESCE(score, 0)
 		FROM evidence_snippets
 		WHERE check_result_id = $1
@@ -275,8 +280,8 @@ func (a *API) loadEvidence(ctx context.Context, conn *sql.DB, resultID string) (
 	return evidence, rows.Err()
 }
 
-func (a *API) loadIdempotency(ctx context.Context, conn *sql.DB) (map[string]idempotencyRecord, error) {
-	rows, err := conn.QueryContext(ctx, `
+func (a *API) loadIdempotency(ctx context.Context, conn *pgxpool.Pool) (map[string]idempotencyRecord, error) {
+	rows, err := conn.Query(ctx, `
 		SELECT idempotency_key, payload_hash, check_run_id
 		FROM idempotency_keys`)
 	if err != nil {
@@ -296,8 +301,8 @@ func (a *API) loadIdempotency(ctx context.Context, conn *sql.DB) (map[string]ide
 	return keys, rows.Err()
 }
 
-func (a *API) loadCopyEvents(ctx context.Context, conn *sql.DB) (map[string]externalCopyEvent, error) {
-	rows, err := conn.QueryContext(ctx, `
+func (a *API) loadCopyEvents(ctx context.Context, conn *pgxpool.Pool) (map[string]externalCopyEvent, error) {
+	rows, err := conn.Query(ctx, `
 		SELECT id, document_id, target_system, status, COALESCE(request_payload::text, '{}'),
 		       COALESCE(response_payload::text, '{}'), attempts, COALESCE(error_message, ''),
 		       created_at, updated_at
@@ -339,7 +344,7 @@ func (a *API) loadCopyEvents(ctx context.Context, conn *sql.DB) (map[string]exte
 }
 
 func (a *API) persistContract(ctx context.Context, item contract) error {
-	conn := a.sqlDB()
+	conn := a.pgPool()
 	if conn == nil {
 		return nil
 	}
@@ -347,7 +352,7 @@ func (a *API) persistContract(ctx context.Context, item contract) error {
 	if err != nil {
 		return fmt.Errorf("encode contract tags: %w", err)
 	}
-	_, err = conn.ExecContext(ctx, `
+	_, err = conn.Exec(ctx, `
 		INSERT INTO contracts (id, name, source_type, source_ref, tags, created_at, updated_at)
 		VALUES ($1, $2, $3, NULLIF($4, ''), $5::jsonb, $6, $7)
 		ON CONFLICT (id) DO UPDATE
@@ -365,7 +370,7 @@ func (a *API) persistContract(ctx context.Context, item contract) error {
 }
 
 func (a *API) persistDocument(ctx context.Context, doc document) error {
-	conn := a.sqlDB()
+	conn := a.pgPool()
 	if conn == nil {
 		return nil
 	}
@@ -373,7 +378,7 @@ func (a *API) persistDocument(ctx context.Context, doc document) error {
 	if err != nil {
 		return fmt.Errorf("encode document tags: %w", err)
 	}
-	_, err = conn.ExecContext(ctx, `
+	_, err = conn.Exec(ctx, `
 		INSERT INTO documents (
 			id, contract_id, source_type, source_ref, tags, filename, mime_type, storage_uri,
 			status, created_at, updated_at, checksum, extracted_text, storage_key, file_order
@@ -406,7 +411,7 @@ func (a *API) persistDocument(ctx context.Context, doc document) error {
 }
 
 func (a *API) persistCheckCreated(ctx context.Context, run checkRun, payload any, idempotencyKey, payloadHash string) error {
-	conn := a.sqlDB()
+	conn := a.pgPool()
 	if conn == nil {
 		return nil
 	}
@@ -414,13 +419,13 @@ func (a *API) persistCheckCreated(ctx context.Context, run checkRun, payload any
 	if err != nil {
 		return fmt.Errorf("encode check payload: %w", err)
 	}
-	tx, err := conn.BeginTx(ctx, nil)
+	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin create check tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(ctx, tx)
 
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO check_runs (id, check_type, input_payload, status, requested_at, finished_at, failure_reason, created_at)
 		VALUES ($1, $2, $3::jsonb, $4, $5, NULL, '', $5)
 		ON CONFLICT (id) DO UPDATE
@@ -435,7 +440,7 @@ func (a *API) persistCheckCreated(ctx context.Context, run checkRun, payload any
 		return fmt.Errorf("insert check run: %w", err)
 	}
 	for idx, documentID := range run.DocumentIDs {
-		if _, err := tx.ExecContext(ctx, `
+		if _, err := tx.Exec(ctx, `
 			INSERT INTO check_run_documents (check_run_id, document_id, position)
 			VALUES ($1, $2, $3)
 			ON CONFLICT (check_run_id, document_id) DO UPDATE
@@ -446,7 +451,7 @@ func (a *API) persistCheckCreated(ctx context.Context, run checkRun, payload any
 		}
 	}
 	if idempotencyKey != "" {
-		if _, err := tx.ExecContext(ctx, `
+		if _, err := tx.Exec(ctx, `
 			INSERT INTO idempotency_keys (idempotency_key, check_run_id, payload_hash)
 			VALUES ($1, $2, $3)
 			ON CONFLICT (idempotency_key) DO UPDATE
@@ -457,21 +462,21 @@ func (a *API) persistCheckCreated(ctx context.Context, run checkRun, payload any
 			return fmt.Errorf("insert idempotency key: %w", err)
 		}
 	}
-	return tx.Commit()
+	return tx.Commit(ctx)
 }
 
 func (a *API) persistCheckState(ctx context.Context, run checkRun) error {
-	conn := a.sqlDB()
+	conn := a.pgPool()
 	if conn == nil {
 		return nil
 	}
-	tx, err := conn.BeginTx(ctx, nil)
+	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin check state tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(ctx, tx)
 
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		UPDATE check_runs
 		SET status = $2, requested_at = $3, finished_at = $4, failure_reason = $5
 		WHERE id = $1`,
@@ -479,12 +484,12 @@ func (a *API) persistCheckState(ctx context.Context, run checkRun) error {
 	); err != nil {
 		return fmt.Errorf("update check run: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM check_results WHERE check_run_id = $1`, run.CheckID); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM check_results WHERE check_run_id = $1`, run.CheckID); err != nil {
 		return fmt.Errorf("clear check results: %w", err)
 	}
 	for _, item := range run.Items {
 		var resultID string
-		if err := tx.QueryRowContext(ctx, `
+		if err := tx.QueryRow(ctx, `
 			INSERT INTO check_results (id, check_run_id, document_id, outcome, confidence, summary, created_at)
 			VALUES (gen_random_uuid(), $1, $2, $3, $4, NULLIF($5, ''), NOW())
 			RETURNING id`,
@@ -493,7 +498,7 @@ func (a *API) persistCheckState(ctx context.Context, run checkRun) error {
 			return fmt.Errorf("insert check result: %w", err)
 		}
 		for _, snippet := range item.Evidence {
-			if _, err := tx.ExecContext(ctx, `
+			if _, err := tx.Exec(ctx, `
 				INSERT INTO evidence_snippets (id, check_result_id, page_number, chunk_ref, snippet_text, score, created_at)
 				VALUES (gen_random_uuid(), $1, $2, NULLIF($3, ''), $4, $5, NOW())`,
 				resultID, snippet.PageNumber, snippet.ChunkID, snippet.SnippetText, snippet.Score,
@@ -502,11 +507,11 @@ func (a *API) persistCheckState(ctx context.Context, run checkRun) error {
 			}
 		}
 	}
-	return tx.Commit()
+	return tx.Commit(ctx)
 }
 
 func (a *API) persistCopyEvent(ctx context.Context, event externalCopyEvent) error {
-	conn := a.sqlDB()
+	conn := a.pgPool()
 	if conn == nil {
 		return nil
 	}
@@ -518,7 +523,7 @@ func (a *API) persistCopyEvent(ctx context.Context, event externalCopyEvent) err
 	if err != nil {
 		return fmt.Errorf("encode copy response payload: %w", err)
 	}
-	_, err = conn.ExecContext(ctx, `
+	_, err = conn.Exec(ctx, `
 		INSERT INTO external_copy_events (
 			id, document_id, target_system, request_payload, response_payload, status,
 			error_message, created_at, updated_at, attempts
@@ -541,17 +546,17 @@ func (a *API) persistCopyEvent(ctx context.Context, event externalCopyEvent) err
 }
 
 func (a *API) deleteDocumentState(ctx context.Context, documentID string) error {
-	conn := a.sqlDB()
+	conn := a.pgPool()
 	if conn == nil {
 		return nil
 	}
-	tx, err := conn.BeginTx(ctx, nil)
+	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin delete document tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(ctx, tx)
 
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		DELETE FROM check_runs
 		WHERE id IN (
 			SELECT DISTINCT check_run_id
@@ -560,24 +565,24 @@ func (a *API) deleteDocumentState(ctx context.Context, documentID string) error 
 		)`, documentID); err != nil {
 		return fmt.Errorf("delete related checks: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM documents WHERE id = $1`, documentID); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM documents WHERE id = $1`, documentID); err != nil {
 		return fmt.Errorf("delete document row: %w", err)
 	}
-	return tx.Commit()
+	return tx.Commit(ctx)
 }
 
 func (a *API) deleteContractState(ctx context.Context, contractID string) error {
-	conn := a.sqlDB()
+	conn := a.pgPool()
 	if conn == nil {
 		return nil
 	}
-	tx, err := conn.BeginTx(ctx, nil)
+	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin delete contract tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(ctx, tx)
 
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.Exec(ctx, `
 		DELETE FROM check_runs
 		WHERE id IN (
 			SELECT DISTINCT crd.check_run_id
@@ -587,17 +592,17 @@ func (a *API) deleteContractState(ctx context.Context, contractID string) error 
 		)`, contractID); err != nil {
 		return fmt.Errorf("delete contract checks: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM contracts WHERE id = $1`, contractID); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM contracts WHERE id = $1`, contractID); err != nil {
 		return fmt.Errorf("delete contract row: %w", err)
 	}
-	return tx.Commit()
+	return tx.Commit(ctx)
 }
 
-func (a *API) sqlDB() *sql.DB {
+func (a *API) pgPool() *pgxpool.Pool {
 	if a.pg == nil {
 		return nil
 	}
-	return a.pg.DB()
+	return a.pg.Pool()
 }
 
 func (a *API) fileOrder(doc document) int {
@@ -616,4 +621,11 @@ func (a *API) fileOrder(doc document) int {
 		}
 	}
 	return 0
+}
+
+func rollbackTx(ctx context.Context, tx pgx.Tx) {
+	if tx == nil {
+		return
+	}
+	_ = tx.Rollback(ctx)
 }

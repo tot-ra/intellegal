@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
 	"legal-doc-intel/go-api/internal/ai"
+	"legal-doc-intel/go-api/internal/db"
 	"legal-doc-intel/go-api/internal/http/middleware"
 	"legal-doc-intel/go-api/internal/ids"
 )
@@ -54,6 +56,10 @@ func (a *API) ChatContract(w http.ResponseWriter, r *http.Request) {
 		case "no extracted text":
 			writeError(w, http.StatusConflict, "contract_not_ready", "no extracted text is available for this contract yet", false, nil)
 		default:
+			if errors.Is(err, db.ErrNotConfigured) {
+				writeError(w, http.StatusServiceUnavailable, "service_unavailable", "database is not configured", true, nil)
+				return
+			}
 			writeError(w, http.StatusBadRequest, "invalid_argument", err.Error(), false, nil)
 		}
 		return
@@ -72,14 +78,10 @@ func (a *API) ChatContract(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.mu.RLock()
 	filenamesByDocumentID := make(map[string]string, len(documents))
 	for _, doc := range documents {
-		if stored, ok := a.documents[doc.DocumentID]; ok {
-			filenamesByDocumentID[doc.DocumentID] = stored.Filename
-		}
+		filenamesByDocumentID[doc.DocumentID] = doc.Filename
 	}
-	a.mu.RUnlock()
 
 	citations := make([]contractChatCitationResponse, 0, len(result.Citations))
 	for _, citation := range result.Citations {
@@ -103,23 +105,23 @@ func (a *API) ChatContract(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) contractChatDocuments(contractID string) ([]ai.ContractChatDocument, error) {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
+	if a.contractsModel == nil {
+		return nil, db.ErrNotConfigured
+	}
 
-	item, ok := a.contracts[contractID]
+	item, ok, err := a.contractsModel.Get(context.Background(), contractID)
+	if err != nil {
+		return nil, err
+	}
 	if !ok {
 		return nil, errString("contract not found")
 	}
-	if len(item.FileIDs) == 0 {
+	if len(item.Files) == 0 {
 		return nil, errString("no contract files")
 	}
 
-	documents := make([]ai.ContractChatDocument, 0, len(item.FileIDs))
-	for _, fileID := range item.FileIDs {
-		doc, exists := a.documents[fileID]
-		if !exists {
-			continue
-		}
+	documents := make([]ai.ContractChatDocument, 0, len(item.Files))
+	for _, doc := range item.Files {
 		text := strings.TrimSpace(doc.ExtractedText)
 		if text == "" {
 			continue

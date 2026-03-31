@@ -4,8 +4,11 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
+
+	"github.com/minio/minio-go/v7"
 )
 
 func TestNewMinIOAdapter_ReturnsErrorWhenEndpointIsMissing(t *testing.T) {
@@ -223,5 +226,29 @@ func TestMinIOAdapterDelete_ReturnsErrorWhenKeyIsEmpty(t *testing.T) {
 	}
 	if err.Error() != "storage key is empty" {
 		t.Fatalf("expected %q, got %q", "storage key is empty", err.Error())
+	}
+}
+
+func TestIsIgnorableDeleteError_ReturnsTrueForMissingBucket(t *testing.T) {
+	if !isIgnorableDeleteError(minio.ErrorResponse{Code: "NoSuchBucket"}) {
+		t.Fatal("expected NoSuchBucket to be ignored")
+	}
+}
+
+func TestIsIgnorableDeleteError_ReturnsTrueForMissingObject(t *testing.T) {
+	if !isIgnorableDeleteError(minio.ErrorResponse{Code: "NoSuchKey"}) {
+		t.Fatal("expected NoSuchKey to be ignored")
+	}
+	if !isIgnorableDeleteError(minio.ErrorResponse{Code: "NoSuchObject"}) {
+		t.Fatal("expected NoSuchObject to be ignored")
+	}
+}
+
+func TestIsIgnorableDeleteError_ReturnsFalseForOtherErrors(t *testing.T) {
+	if isIgnorableDeleteError(errors.New("boom")) {
+		t.Fatal("expected plain errors to remain fatal")
+	}
+	if isIgnorableDeleteError(minio.ErrorResponse{Code: "AccessDenied"}) {
+		t.Fatal("expected AccessDenied to remain fatal")
 	}
 }

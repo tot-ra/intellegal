@@ -103,6 +103,9 @@ func (a *MinIOAdapter) Delete(ctx context.Context, key string) error {
 	}
 
 	if err := a.client.RemoveObject(ctx, a.bucket, key, minio.RemoveObjectOptions{}); err != nil {
+		if isIgnorableDeleteError(err) {
+			return nil
+		}
 		return fmt.Errorf("delete minio object: %w", err)
 	}
 
@@ -134,4 +137,9 @@ func validateStorageKey(key string) error {
 		return fmt.Errorf("storage key escapes root: %q", key)
 	}
 	return nil
+}
+
+func isIgnorableDeleteError(err error) bool {
+	resp := minio.ToErrorResponse(err)
+	return resp.Code == "NoSuchBucket" || resp.Code == "NoSuchKey" || resp.Code == "NoSuchObject"
 }
