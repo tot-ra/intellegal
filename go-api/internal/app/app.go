@@ -27,15 +27,11 @@ type App struct {
 
 func New(cfg config.Config, logger logging.Logger) (*App, error) {
 	store, err := storage.NewAdapter(storage.FactoryConfig{
-		Provider:           cfg.StorageProvider,
-		LocalPath:          cfg.LocalStoragePath,
-		AzureAccountName:   cfg.AzureStorageAccount,
-		AzureBlobContainer: cfg.AzureBlobContainer,
-		MinIOEndpoint:      cfg.MinIOEndpoint,
-		MinIOAccessKey:     cfg.MinIOAccessKey,
-		MinIOSecretKey:     cfg.MinIOSecretKey,
-		MinIOBucket:        cfg.MinIOBucket,
-		MinIOUseSSL:        cfg.MinIOUseSSL,
+		MinIOEndpoint:  cfg.MinIOEndpoint,
+		MinIOAccessKey: cfg.MinIOAccessKey,
+		MinIOSecretKey: cfg.MinIOSecretKey,
+		MinIOBucket:    cfg.MinIOBucket,
+		MinIOUseSSL:    cfg.MinIOUseSSL,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("initialize storage adapter: %w", err)
@@ -69,7 +65,7 @@ func New(cfg config.Config, logger logging.Logger) (*App, error) {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	logger.Info("storage adapter configured", "provider", cfg.StorageProvider)
+	logger.Info("storage adapter configured", "provider", "minio")
 
 	return &App{cfg: cfg, logger: logger, server: server, db: pg, storage: store}, nil
 }

@@ -454,21 +454,15 @@ func combineExtractedText(result ai.ExtractResult) string {
 	if len(result.Pages) == 0 {
 		return ""
 	}
-	var builder strings.Builder
-	for i, page := range result.Pages {
+	parts := make([]string, 0, len(result.Pages))
+	for _, page := range result.Pages {
 		content := strings.TrimSpace(page.Text)
 		if content == "" {
 			continue
 		}
-		if builder.Len() > 0 {
-			builder.WriteString("\n\n")
-		}
-		builder.WriteString(content)
-		if i < len(result.Pages)-1 {
-			builder.WriteString("\n")
-		}
+		parts = append(parts, content)
 	}
-	return strings.TrimSpace(builder.String())
+	return strings.TrimSpace(strings.Join(parts, "\n\n"))
 }
 
 func (a *API) markDocumentFailed(documentID string, err error) {

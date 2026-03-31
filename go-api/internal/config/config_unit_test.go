@@ -3,15 +3,12 @@
 package config
 
 import (
-	"strings"
 	"testing"
 	"time"
 )
 
 func TestLoadDefaultsWithToken(t *testing.T) {
 	setRequiredEnv(t)
-	t.Setenv("STORAGE_PROVIDER", "")
-	t.Setenv("LOCAL_STORAGE_PATH", "")
 	t.Setenv("MINIO_ENDPOINT", "")
 	t.Setenv("MINIO_BUCKET", "")
 	t.Setenv("DATABASE_PING_TIMEOUT", "")
@@ -23,9 +20,6 @@ func TestLoadDefaultsWithToken(t *testing.T) {
 
 	if cfg.Port != 8080 {
 		t.Fatalf("expected default port 8080, got %d", cfg.Port)
-	}
-	if cfg.StorageProvider != "minio" {
-		t.Fatalf("expected default storage provider minio, got %q", cfg.StorageProvider)
 	}
 	if cfg.MinIOEndpoint != "minio:9000" {
 		t.Fatalf("expected default minio endpoint, got %q", cfg.MinIOEndpoint)
@@ -71,19 +65,6 @@ func TestLoadParsesLogLevel(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsInvalidStorageProvider(t *testing.T) {
-	setRequiredEnv(t)
-	t.Setenv("STORAGE_PROVIDER", "s3")
-
-	_, err := Load()
-	if err == nil {
-		t.Fatal("expected error for invalid storage provider")
-	}
-	if !strings.Contains(err.Error(), "invalid STORAGE_PROVIDER") {
-		t.Fatalf("expected storage provider validation error, got %v", err)
-	}
-}
-
 func TestLoadRejectsInvalidDatabasePingTimeout(t *testing.T) {
 	setRequiredEnv(t)
 	t.Setenv("DATABASE_PING_TIMEOUT", "zero")
@@ -114,21 +95,8 @@ func TestLoadRejectsInvalidExternalCopyRetries(t *testing.T) {
 	}
 }
 
-func TestLoadRequiresAzureFields(t *testing.T) {
-	setRequiredEnv(t)
-	t.Setenv("STORAGE_PROVIDER", "azure")
-	t.Setenv("AZURE_STORAGE_ACCOUNT", "")
-	t.Setenv("AZURE_BLOB_CONTAINER", "")
-
-	_, err := Load()
-	if err == nil {
-		t.Fatal("expected error for missing azure storage fields")
-	}
-}
-
 func TestLoadRequiresMinIOFields(t *testing.T) {
 	setRequiredEnv(t)
-	t.Setenv("STORAGE_PROVIDER", "minio")
 	t.Setenv("MINIO_ACCESS_KEY", "")
 	t.Setenv("MINIO_SECRET_KEY", "")
 

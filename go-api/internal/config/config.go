@@ -28,10 +28,6 @@ type Config struct {
 	ExternalCopyToken    string
 	ExternalCopyTimeout  time.Duration
 	ExternalCopyRetries  int
-	StorageProvider      string
-	LocalStoragePath     string
-	AzureStorageAccount  string
-	AzureBlobContainer   string
 	MinIOEndpoint        string
 	MinIOAccessKey       string
 	MinIOSecretKey       string
@@ -51,8 +47,6 @@ func Load() (Config, error) {
 		InternalAITimeout:    90 * time.Second,
 		ExternalCopyTimeout:  8 * time.Second,
 		ExternalCopyRetries:  3,
-		StorageProvider:      "minio",
-		LocalStoragePath:     "./samples/storage",
 		MinIOEndpoint:        "minio:9000",
 		MinIOBucket:          "contracts",
 	}
@@ -150,26 +144,6 @@ func Load() (Config, error) {
 		cfg.ExternalCopyRetries = n
 	}
 
-	if v := strings.TrimSpace(os.Getenv("STORAGE_PROVIDER")); v != "" {
-		switch strings.ToLower(v) {
-		case "local", "azure", "minio":
-			cfg.StorageProvider = strings.ToLower(v)
-		default:
-			return Config{}, fmt.Errorf("invalid STORAGE_PROVIDER: %q", v)
-		}
-	}
-
-	if v := strings.TrimSpace(os.Getenv("LOCAL_STORAGE_PATH")); v != "" {
-		cfg.LocalStoragePath = v
-	}
-
-	if v := strings.TrimSpace(os.Getenv("AZURE_STORAGE_ACCOUNT")); v != "" {
-		cfg.AzureStorageAccount = v
-	}
-
-	if v := strings.TrimSpace(os.Getenv("AZURE_BLOB_CONTAINER")); v != "" {
-		cfg.AzureBlobContainer = v
-	}
 	if v := strings.TrimSpace(os.Getenv("MINIO_ENDPOINT")); v != "" {
 		cfg.MinIOEndpoint = v
 	}
@@ -198,31 +172,17 @@ func Load() (Config, error) {
 		return Config{}, errors.New("INTERNAL_SERVICE_TOKEN is not set")
 	}
 
-	if cfg.StorageProvider == "local" && strings.TrimSpace(cfg.LocalStoragePath) == "" {
-		return Config{}, errors.New("LOCAL_STORAGE_PATH is not set")
+	if strings.TrimSpace(cfg.MinIOEndpoint) == "" {
+		return Config{}, errors.New("MINIO_ENDPOINT is not set")
 	}
-
-	if cfg.StorageProvider == "azure" {
-		if strings.TrimSpace(cfg.AzureStorageAccount) == "" {
-			return Config{}, errors.New("AZURE_STORAGE_ACCOUNT is not set")
-		}
-		if strings.TrimSpace(cfg.AzureBlobContainer) == "" {
-			return Config{}, errors.New("AZURE_BLOB_CONTAINER is not set")
-		}
+	if strings.TrimSpace(cfg.MinIOAccessKey) == "" {
+		return Config{}, errors.New("MINIO_ACCESS_KEY is not set")
 	}
-	if cfg.StorageProvider == "minio" {
-		if strings.TrimSpace(cfg.MinIOEndpoint) == "" {
-			return Config{}, errors.New("MINIO_ENDPOINT is not set")
-		}
-		if strings.TrimSpace(cfg.MinIOAccessKey) == "" {
-			return Config{}, errors.New("MINIO_ACCESS_KEY is not set")
-		}
-		if strings.TrimSpace(cfg.MinIOSecretKey) == "" {
-			return Config{}, errors.New("MINIO_SECRET_KEY is not set")
-		}
-		if strings.TrimSpace(cfg.MinIOBucket) == "" {
-			return Config{}, errors.New("MINIO_BUCKET is not set")
-		}
+	if strings.TrimSpace(cfg.MinIOSecretKey) == "" {
+		return Config{}, errors.New("MINIO_SECRET_KEY is not set")
+	}
+	if strings.TrimSpace(cfg.MinIOBucket) == "" {
+		return Config{}, errors.New("MINIO_BUCKET is not set")
 	}
 
 	return cfg, nil
