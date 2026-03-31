@@ -46,9 +46,14 @@ jobs:
       - name: Test unit
         run: |
           rm -f .coverage
-          pytest -m unit --cov=py_ai_api --cov-report=
+          pytest -m unit --cov=py_ai_api --cov-branch --cov-report=
       - name: Test integration
-        run: pytest -m integration --cov=py_ai_api --cov-append --cov-report=term-missing
+        run: pytest -m integration --cov=py_ai_api --cov-branch --cov-append --cov-report=term-missing --cov-report=xml
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: py-ai-api/coverage.xml
       - name: Build package
         run: python -m pip wheel . --no-deps --wheel-dir /tmp/wheels
 

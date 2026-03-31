@@ -2,6 +2,8 @@
 
 # IntelLegal - Legal Document Intelligence Platform
 
+[![codecov](https://codecov.io/gh/tot-ra/intellegal/graph/badge.svg?token=SXSCERIZWB)](https://codecov.io/gh/tot-ra/intellegal)
+
 ## 1. 🎯 Problem and Constraints
 
 ### Problem
