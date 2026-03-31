@@ -267,6 +267,17 @@ make migrate-down
 ```
 
 ### 4. ✅ Run tests
+We use a practical test pyramid across the stack so day-to-day development stays fast while still keeping full user journeys covered:
+
+- Base layer: fast unit tests in Go, Python, and the frontend.
+- Middle layer: integration tests for backend/API behavior.
+- Top layer: Playwright end-to-end tests for critical browser workflows such as contract upload and navigation.
+
+Recommended developer workflow:
+- Run narrow, fast tests while implementing a change.
+- Run the relevant language suite before opening a PR.
+- Run Playwright for user-facing flows, routing changes, or upload/search/check experiences.
+
 Run all suites:
 ```bash
 make test
@@ -277,7 +288,54 @@ Run individual suites:
 make test-go
 make test-py
 make test-fe
+make test-fe-e2e
+make test-fe-e2e-headed
 ```
+
+What each target covers:
+
+- `make test`
+  Runs the main fast suites across Go, Python, and frontend unit/component tests.
+- `make test-go`
+  Runs Go unit and integration tests and prints combined coverage.
+- `make test-go-unit`
+  Runs the fastest Go feedback loop for handler, model, and utility changes.
+- `make test-go-integration`
+  Runs Go integration-tagged tests.
+- `make test-py`
+  Runs Python AI API unit and integration tests with combined coverage.
+- `make test-py-unit`
+  Runs Python unit tests for extraction, indexing, search, auth, and analysis logic.
+- `make test-py-integration`
+  Runs Python integration tests.
+- `make test-fe`
+  Runs frontend Vitest tests for components, routing, and client logic.
+- `make test-fe-e2e`
+  Runs Playwright browser tests in headless Chromium.
+- `make test-fe-e2e-headed`
+  Runs the same Playwright tests in visible Chromium for debugging local flows.
+
+Typical examples:
+```bash
+# frontend UI change
+make test-fe
+
+# upload flow or routing change
+make test-fe-e2e
+
+# debug the browser flow visually
+make test-fe-e2e-headed
+
+# backend API change
+make test-go
+
+# AI pipeline change
+make test-py
+```
+
+Notes:
+- `make test` is intended to stay relatively fast and currently does not include Playwright.
+- Playwright tests automatically install Chromium if needed through the frontend test target.
 
 ### 5. 🧹 Stop or clean stack
 ```bash

@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-.PHONY: help init up down ps logs clean clean-artifacts test test-go test-go-unit test-go-integration test-py test-py-unit test-py-integration test-fe migrate-up migrate-down migrate-version
+.PHONY: help init up down ps logs clean clean-artifacts test test-go test-go-unit test-go-integration test-py test-py-unit test-py-integration test-fe test-fe-e2e test-fe-e2e-headed migrate-up migrate-down migrate-version
 
 help:
 	@echo "Targets:"
@@ -19,6 +19,8 @@ help:
 	@echo "  test-py-unit - run Python AI API unit tests with coverage"
 	@echo "  test-py-integration - run Python AI API integration tests with coverage"
 	@echo "  test-fe - run frontend tests"
+	@echo "  test-fe-e2e - run frontend Playwright end-to-end tests"
+	@echo "  test-fe-e2e-headed - run frontend Playwright end-to-end tests in visible Chrome"
 	@echo "  migrate-up - apply all pending PostgreSQL migrations"
 	@echo "  migrate-down - roll back latest PostgreSQL migration"
 	@echo "  migrate-version - show current PostgreSQL migration version"
@@ -100,6 +102,12 @@ test-py-integration:
 
 test-fe:
 	cd frontend && if command -v bun >/dev/null 2>&1; then bun install >/dev/null && bun run test; else npm install >/dev/null && npm run test; fi
+
+test-fe-e2e:
+	cd frontend && if command -v bun >/dev/null 2>&1; then bun install >/dev/null && bunx playwright install chromium >/dev/null && bun run test:e2e; else npm install >/dev/null && npx playwright install chromium >/dev/null && npm run test:e2e; fi
+
+test-fe-e2e-headed:
+	cd frontend && if command -v bun >/dev/null 2>&1; then bun install >/dev/null && bunx playwright install chromium >/dev/null && bun run test:e2e:headed; else npm install >/dev/null && npx playwright install chromium >/dev/null && npm run test:e2e:headed; fi
 
 migrate-up:
 	./infra/scripts/migrate.sh up
