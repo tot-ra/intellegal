@@ -532,13 +532,6 @@ erDiagram
   - `status` (ingested/processing/indexed/failed)
   - `created_at`, `updated_at`
 
-- `document_versions`
-  - `id (uuid, pk)`
-  - `document_id (fk)`
-  - `version_label`
-  - `checksum`
-  - `created_at`
-
 - `check_runs`
   - `id (uuid, pk)`
   - `check_type` (clause_presence/llm_review)
@@ -584,7 +577,7 @@ erDiagram
 ### ♻️ Data Lifecycle
 - Raw file retained in blob storage.
 - Extracted chunks indexed in Qdrant; source of truth remains PostgreSQL + blob.
-- Re-indexing is supported using `document_versions.checksum` and idempotent upsert.
+- Re-indexing is supported using `documents.checksum` and idempotent upsert.
 - Audit events retained for legal traceability.
 
 ---

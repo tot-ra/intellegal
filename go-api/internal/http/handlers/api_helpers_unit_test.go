@@ -2,9 +2,15 @@
 
 package handlers
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 func TestHashPayload_IsDeterministic(t *testing.T) {
+	// arrange
 	payload := map[string]any{
 		"required_clause_text": "Payment terms",
 		"context_hint":         "MSA",
@@ -14,23 +20,22 @@ func TestHashPayload_IsDeterministic(t *testing.T) {
 		"550e8400-e29b-41d4-a716-446655440001",
 	}
 
+	// act
 	left, err := hashPayload(payload, documentIDs)
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
+	require.NoError(t, err)
 	right, err := hashPayload(payload, documentIDs)
-	if err != nil {
-		t.Fatalf("expected no error on second hash, got %v", err)
-	}
+	require.NoError(t, err)
 
-	if left != right {
-		t.Fatalf("expected stable hash, got %q and %q", left, right)
-	}
+	// assert
+	assert.Equal(t, left, right)
 }
 
 func TestHashPayload_ReturnsErrorForUnmarshalablePayload(t *testing.T) {
+	// arrange
+
+	// act
 	_, err := hashPayload(map[string]any{"bad": func() {}}, nil)
-	if err == nil {
-		t.Fatal("expected marshal error")
-	}
+
+	// assert
+	require.Error(t, err)
 }

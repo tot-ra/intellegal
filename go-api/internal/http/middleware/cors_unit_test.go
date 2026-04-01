@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCORS_AddsHeadersForAllowedOrigin(t *testing.T) {
-	// Arrange
+	// arrange
 	handler := CORS(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}), []string{"http://localhost:3000"})
@@ -18,17 +20,15 @@ func TestCORS_AddsHeadersForAllowedOrigin(t *testing.T) {
 	req.Header.Set("Origin", "http://localhost:3000")
 	w := httptest.NewRecorder()
 
-	// Act
+	// act
 	handler.ServeHTTP(w, req)
 
-	// Assert
-	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:3000" {
-		t.Fatalf("expected Access-Control-Allow-Origin header to match origin, got %q", got)
-	}
+	// assert
+	assert.Equal(t, "http://localhost:3000", w.Header().Get("Access-Control-Allow-Origin"))
 }
 
 func TestCORS_ShortCircuitsAllowedPreflightRequests(t *testing.T) {
-	// Arrange
+	// arrange
 	called := false
 	handler := CORS(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		called = true
@@ -40,14 +40,10 @@ func TestCORS_ShortCircuitsAllowedPreflightRequests(t *testing.T) {
 	req.Header.Set("Access-Control-Request-Method", "GET")
 	w := httptest.NewRecorder()
 
-	// Act
+	// act
 	handler.ServeHTTP(w, req)
 
-	// Assert
-	if called {
-		t.Fatal("expected preflight request to short-circuit middleware")
-	}
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("expected 204 for allowed preflight, got %d", w.Code)
-	}
+	// assert
+	assert.False(t, called)
+	assert.Equal(t, http.StatusNoContent, w.Code)
 }

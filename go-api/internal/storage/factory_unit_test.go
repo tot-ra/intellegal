@@ -2,24 +2,26 @@
 
 package storage
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestNewAdapter_ReturnsMinIOAdapter(t *testing.T) {
-	// Arrange
+	// arrange
 
-	// Act
+	// act
 	adapter, err := NewAdapter(FactoryConfig{
 		MinIOEndpoint:  "localhost:9000",
 		MinIOAccessKey: "minioadmin",
 		MinIOSecretKey: "minioadmin",
 		MinIOBucket:    "contracts",
 	})
-	if err != nil {
-		t.Fatalf("expected minio adapter, got error: %v", err)
-	}
+	require.NoError(t, err)
 
-	// Assert
+	// assert
 	if _, ok := adapter.(*MinIOAdapter); !ok {
-		t.Fatalf("expected MinIOAdapter type, got %T", adapter)
+		require.Failf(t, "expected MinIOAdapter type", "got %T", adapter)
 	}
 }

@@ -106,14 +106,14 @@ func (f *fakeAIClient) SearchSections(_ context.Context, _ ai.SearchSectionsRequ
 }
 
 func TestDocumentAndCheckFlow_CreatesDocumentsAndReturnsCompletedResults(t *testing.T) {
-	// Arrange
+	// arrange
 	log := logging.NewDiscard(logger.New(logger.LoggerConfig{}))
 	api := handlers.NewAPI(log, &fakeAIClient{}, nil, nil)
 	api.EnableInMemoryReadersForTesting()
 	ts := httptest.NewServer(router.New(log, api, nil, []string{"http://localhost:3000"}))
 	defer ts.Close()
 
-	// Act
+	// act
 	docResp := postJSON(t, ts.URL+"/api/v1/documents", map[string]any{
 		"filename":       "contract.pdf",
 		"mime_type":      "application/pdf",
@@ -122,7 +122,7 @@ func TestDocumentAndCheckFlow_CreatesDocumentsAndReturnsCompletedResults(t *test
 	})
 	require.Equal(t, http.StatusCreated, docResp.StatusCode)
 
-	// Assert
+	// assert
 	var createdDoc map[string]any
 	decodeResponse(t, docResp, &createdDoc)
 	docID := createdDoc["id"].(string)
@@ -171,14 +171,14 @@ func TestDocumentAndCheckFlow_CreatesDocumentsAndReturnsCompletedResults(t *test
 }
 
 func TestContractLifecycle_ManagesFilesAndOrderingThroughRouter(t *testing.T) {
-	// Arrange
+	// arrange
 	log := logging.NewDiscard(logger.New(logger.LoggerConfig{}))
 	api := handlers.NewAPI(log, &fakeAIClient{}, nil, nil)
 	api.EnableInMemoryReadersForTesting()
 	ts := httptest.NewServer(router.New(log, api, nil, []string{"http://localhost:3000"}))
 	defer ts.Close()
 
-	// Act
+	// act
 	createResp := postJSON(t, ts.URL+"/api/v1/contracts", map[string]any{
 		"name":        "MSA 2026",
 		"source_type": "api",
@@ -228,7 +228,7 @@ func TestContractLifecycle_ManagesFilesAndOrderingThroughRouter(t *testing.T) {
 	decodeResponse(t, secondFileResp, &secondFile)
 	require.NotEmpty(t, secondFile.ID)
 
-	// Assert
+	// assert
 	listResp := get(t, ts.URL+"/api/v1/contracts?limit=10&offset=0")
 	require.Equal(t, http.StatusOK, listResp.StatusCode)
 	var listed struct {
@@ -297,7 +297,7 @@ func waitForCheckStatus(t *testing.T, baseURL, checkID, want string) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatalf("check %s did not reach status %s", checkID, want)
+	require.FailNowf(t, "check did not reach desired status", "check %s did not reach status %s", checkID, want)
 }
 
 func postJSON(t *testing.T, url string, payload any) *http.Response {

@@ -13,6 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"legal-doc-intel/go-api/internal/ai"
 )
 
@@ -102,32 +105,28 @@ func useInMemoryReaders(api *API) {
 }
 
 func TestCreateDocument_ReturnsBadRequestForUnsupportedMIMEType(t *testing.T) {
-	// Arrange
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 
-	// Act
+	// act
 	resp := performJSONRequest(t, http.MethodPost, "/api/v1/documents", map[string]any{
 		"filename":       "contract.txt",
 		"mime_type":      "text/plain",
 		"content_base64": "dGVzdA==",
 	}, api.CreateDocument)
 
-	if resp.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", resp.Code)
-	}
+	// assert
+	assert.Equal(t, http.StatusBadRequest, resp.Code)
 
-	// Assert
 	body := decodeJSONBody(t, resp)
-	if body.Error.Code != "invalid_argument" {
-		t.Fatalf("expected invalid_argument error code, got %q", body.Error.Code)
-	}
+	assert.Equal(t, "invalid_argument", body.Error.Code)
 }
 
 func TestCreateDocument_StoresNormalizedTags(t *testing.T) {
-	// Arrange
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 
-	// Act
+	// act
 	resp := performJSONRequest(t, http.MethodPost, "/api/v1/documents", map[string]any{
 		"filename":       "contract.pdf",
 		"mime_type":      "application/pdf",
@@ -135,98 +134,77 @@ func TestCreateDocument_StoresNormalizedTags(t *testing.T) {
 		"tags":           []string{"  MSA  ", "Finance", "finance", "", "2026"},
 	}, api.CreateDocument)
 
-	if resp.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d", resp.Code)
-	}
+	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	// Assert
+	// assert
 	var body struct {
 		ID   string   `json:"id"`
 		Tags []string `json:"tags"`
 	}
 	decodeJSONBodyInto(t, resp, &body)
-	if body.ID == "" {
-		t.Fatal("expected created document id")
-	}
-	if len(body.Tags) != 3 {
-		t.Fatalf("expected 3 normalized tags, got %d", len(body.Tags))
-	}
-	if body.Tags[0] != "MSA" || body.Tags[1] != "Finance" || body.Tags[2] != "2026" {
-		t.Fatalf("unexpected tags: %#v", body.Tags)
-	}
+	assert.NotEmpty(t, body.ID)
+	assert.Equal(t, []string{"MSA", "Finance", "2026"}, body.Tags)
 }
 
 func TestCreateDocument_AcceptsPNGFiles(t *testing.T) {
-	// Arrange
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 
-	// Act
+	// act
 	resp := performJSONRequest(t, http.MethodPost, "/api/v1/documents", map[string]any{
 		"filename":       "scan.png",
 		"mime_type":      "image/png",
 		"content_base64": "dGVzdA==",
 	}, api.CreateDocument)
 
-	if resp.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d", resp.Code)
-	}
+	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	// Assert
+	// assert
 	var body struct {
 		MIMEType string `json:"mime_type"`
 	}
 	decodeJSONBodyInto(t, resp, &body)
-	if body.MIMEType != "image/png" {
-		t.Fatalf("expected image/png mime type, got %q", body.MIMEType)
-	}
+	assert.Equal(t, "image/png", body.MIMEType)
 }
 
 func TestCreateDocument_AcceptsDOCXFiles(t *testing.T) {
-	// Arrange
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 
-	// Act
+	// act
 	resp := performJSONRequest(t, http.MethodPost, "/api/v1/documents", map[string]any{
 		"filename":       "contract.docx",
 		"mime_type":      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 		"content_base64": "dGVzdA==",
 	}, api.CreateDocument)
 
-	if resp.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d", resp.Code)
-	}
+	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	// Assert
+	// assert
 	var body struct {
 		MIMEType string `json:"mime_type"`
 	}
 	decodeJSONBodyInto(t, resp, &body)
-	if body.MIMEType != "application/vnd.openxmlformats-officedocument.wordprocessingml.document" {
-		t.Fatalf("expected DOCX mime type, got %q", body.MIMEType)
-	}
+	assert.Equal(t, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", body.MIMEType)
 }
 
 func TestContract_SupportsMultipleFilesAndReordering(t *testing.T) {
-	// Arrange
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 	useInMemoryReaders(api)
 
-	// Act
+	// act
 	createContractResp := performJSONRequest(t, http.MethodPost, "/api/v1/contracts", map[string]any{
 		"name": "MSA 2026",
 	}, api.CreateContract)
-	if createContractResp.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d", createContractResp.Code)
-	}
+	assert.Equal(t, http.StatusCreated, createContractResp.Code)
 
-	// Assert
+	// assert
 	var contractBody struct {
 		ID string `json:"id"`
 	}
 	decodeJSONBodyInto(t, createContractResp, &contractBody)
-	if contractBody.ID == "" {
-		t.Fatal("expected contract id")
-	}
+	assert.NotEmpty(t, contractBody.ID)
 
 	addFile := func(filename, mime string) string {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/contracts/"+contractBody.ID+"/files", bytes.NewReader([]byte(`{
@@ -238,9 +216,7 @@ func TestContract_SupportsMultipleFilesAndReordering(t *testing.T) {
 		req.SetPathValue("contract_id", contractBody.ID)
 		w := httptest.NewRecorder()
 		api.AddContractFile(w, req)
-		if w.Code != http.StatusCreated {
-			t.Fatalf("expected 201 while adding file, got %d", w.Code)
-		}
+		assert.Equal(t, http.StatusCreated, w.Code)
 		var out struct {
 			ID string `json:"id"`
 		}
@@ -255,9 +231,7 @@ func TestContract_SupportsMultipleFilesAndReordering(t *testing.T) {
 	getReq.SetPathValue("contract_id", contractBody.ID)
 	getResp := httptest.NewRecorder()
 	api.GetContract(getResp, getReq)
-	if getResp.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", getResp.Code)
-	}
+	assert.Equal(t, http.StatusOK, getResp.Code)
 
 	var detail struct {
 		FileCount int `json:"file_count"`
@@ -266,12 +240,10 @@ func TestContract_SupportsMultipleFilesAndReordering(t *testing.T) {
 		} `json:"files"`
 	}
 	decodeJSONBodyInto(t, getResp, &detail)
-	if detail.FileCount != 2 {
-		t.Fatalf("expected 2 files, got %d", detail.FileCount)
-	}
-	if len(detail.Files) != 2 || detail.Files[0].ID != firstFileID || detail.Files[1].ID != secondFileID {
-		t.Fatalf("unexpected original file order: %#v", detail.Files)
-	}
+	assert.Equal(t, 2, detail.FileCount)
+	require.Len(t, detail.Files, 2)
+	assert.Equal(t, firstFileID, detail.Files[0].ID)
+	assert.Equal(t, secondFileID, detail.Files[1].ID)
 
 	reorderReq := httptest.NewRequest(http.MethodPatch, "/api/v1/contracts/"+contractBody.ID+"/files/order", bytes.NewReader([]byte(`{
 		"file_ids":["`+secondFileID+`","`+firstFileID+`"]
@@ -280,9 +252,7 @@ func TestContract_SupportsMultipleFilesAndReordering(t *testing.T) {
 	reorderReq.SetPathValue("contract_id", contractBody.ID)
 	reorderResp := httptest.NewRecorder()
 	api.ReorderContractFiles(reorderResp, reorderReq)
-	if reorderResp.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", reorderResp.Code)
-	}
+	assert.Equal(t, http.StatusOK, reorderResp.Code)
 
 	var reordered struct {
 		Files []struct {
@@ -290,13 +260,13 @@ func TestContract_SupportsMultipleFilesAndReordering(t *testing.T) {
 		} `json:"files"`
 	}
 	decodeJSONBodyInto(t, reorderResp, &reordered)
-	if len(reordered.Files) != 2 || reordered.Files[0].ID != secondFileID || reordered.Files[1].ID != firstFileID {
-		t.Fatalf("unexpected reordered file order: %#v", reordered.Files)
-	}
+	require.Len(t, reordered.Files, 2)
+	assert.Equal(t, secondFileID, reordered.Files[0].ID)
+	assert.Equal(t, firstFileID, reordered.Files[1].ID)
 }
 
 func TestGetDocumentContent_StreamsOriginalFile(t *testing.T) {
-	// Arrange
+	// arrange
 	store := &stubDocumentStore{getBody: []byte("%PDF-test")}
 	api := NewAPI(noopLogger{}, nil, store, nil)
 	useInMemoryReaders(api)
@@ -313,29 +283,19 @@ func TestGetDocumentContent_StreamsOriginalFile(t *testing.T) {
 	req.SetPathValue("document_id", documentID)
 	resp := httptest.NewRecorder()
 
-	// Act
+	// act
 	api.GetDocumentContent(resp, req)
 
-	// Assert
-	if resp.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.Code)
-	}
-	if got := resp.Header().Get("Content-Type"); got != "application/pdf" {
-		t.Fatalf("expected application/pdf content type, got %q", got)
-	}
-	if got := resp.Header().Get("Content-Disposition"); got != `inline; filename="contract.pdf"` {
-		t.Fatalf("unexpected content disposition: %q", got)
-	}
-	if body := resp.Body.String(); body != "%PDF-test" {
-		t.Fatalf("unexpected body: %q", body)
-	}
-	if len(store.gotGetKeys) != 1 || store.gotGetKeys[0] != "documents/contract.pdf" {
-		t.Fatalf("unexpected storage keys: %#v", store.gotGetKeys)
-	}
+	// assert
+	assert.Equal(t, http.StatusOK, resp.Code)
+	assert.Equal(t, "application/pdf", resp.Header().Get("Content-Type"))
+	assert.Equal(t, `inline; filename="contract.pdf"`, resp.Header().Get("Content-Disposition"))
+	assert.Equal(t, "%PDF-test", resp.Body.String())
+	assert.Equal(t, []string{"documents/contract.pdf"}, store.gotGetKeys)
 }
 
 func TestGetDocumentContent_ReturnsBadGatewayWhenStorageReadFails(t *testing.T) {
-	// Arrange
+	// arrange
 	store := &stubDocumentStore{getErr: errors.New("boom")}
 	api := NewAPI(noopLogger{}, nil, store, nil)
 	useInMemoryReaders(api)
@@ -352,31 +312,25 @@ func TestGetDocumentContent_ReturnsBadGatewayWhenStorageReadFails(t *testing.T) 
 	req.SetPathValue("document_id", documentID)
 	resp := httptest.NewRecorder()
 
-	// Act
+	// act
 	api.GetDocumentContent(resp, req)
 
-	// Assert
-	if resp.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502, got %d", resp.Code)
-	}
+	// assert
+	assert.Equal(t, http.StatusBadGateway, resp.Code)
 	body := decodeJSONBody(t, resp)
-	if body.Error.Code != "storage_unavailable" {
-		t.Fatalf("expected storage_unavailable error code, got %q", body.Error.Code)
-	}
+	assert.Equal(t, "storage_unavailable", body.Error.Code)
 }
 
 func TestUpdateContract_UpdatesNameAndTags(t *testing.T) {
-	// Arrange
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 
-	// Act
+	// act
 	createResp := performJSONRequest(t, http.MethodPost, "/api/v1/contracts", map[string]any{
 		"name": "Original Name",
 		"tags": []string{"  legal  ", "Finance", "finance"},
 	}, api.CreateContract)
-	if createResp.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d", createResp.Code)
-	}
+	assert.Equal(t, http.StatusCreated, createResp.Code)
 
 	var created struct {
 		ID string `json:"id"`
@@ -393,26 +347,20 @@ func TestUpdateContract_UpdatesNameAndTags(t *testing.T) {
 
 	api.UpdateContract(updateResp, updateReq)
 
-	// Assert
-	if updateResp.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", updateResp.Code)
-	}
+	// assert
+	assert.Equal(t, http.StatusOK, updateResp.Code)
 
 	var body struct {
 		Name string   `json:"name"`
 		Tags []string `json:"tags"`
 	}
 	decodeJSONBodyInto(t, updateResp, &body)
-	if body.Name != "Updated Name" {
-		t.Fatalf("expected trimmed updated name, got %q", body.Name)
-	}
-	if len(body.Tags) != 2 || body.Tags[0] != "MSA" || body.Tags[1] != "procurement" {
-		t.Fatalf("unexpected updated tags: %#v", body.Tags)
-	}
+	assert.Equal(t, "Updated Name", body.Name)
+	assert.Equal(t, []string{"MSA", "procurement"}, body.Tags)
 }
 
 func TestUpdateContract_ReturnsBadRequestForEmptyPayload(t *testing.T) {
-	// Arrange
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 
 	contractID := "00000000-0000-4000-8000-000000000021"
@@ -428,63 +376,51 @@ func TestUpdateContract_ReturnsBadRequestForEmptyPayload(t *testing.T) {
 	req.SetPathValue("contract_id", contractID)
 	w := httptest.NewRecorder()
 
-	// Act
+	// act
 	api.UpdateContract(w, req)
 
-	// Assert
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.Code)
-	}
+	// assert
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 	body := decodeJSONBody(t, w)
-	if body.Error.Code != "invalid_argument" {
-		t.Fatalf("expected invalid_argument, got %q", body.Error.Code)
-	}
+	assert.Equal(t, "invalid_argument", body.Error.Code)
 }
 
 func TestCreateClauseCheck_ReturnsBadRequestForShortText(t *testing.T) {
-	// Arrange
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 
-	// Act
+	// act
 	resp := performJSONRequest(t, http.MethodPost, "/api/v1/checks/clause-presence", map[string]any{
 		"required_clause_text": "abc",
 	}, api.CreateClauseCheck)
 
-	if resp.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", resp.Code)
-	}
+	// assert
+	assert.Equal(t, http.StatusBadRequest, resp.Code)
 
-	// Assert
 	body := decodeJSONBody(t, resp)
-	if body.Error.Code != "invalid_argument" {
-		t.Fatalf("expected invalid_argument error code, got %q", body.Error.Code)
-	}
+	assert.Equal(t, "invalid_argument", body.Error.Code)
 }
 
 func TestCreateClauseCheck_ReturnsBadRequestForUnknownDocumentID(t *testing.T) {
-	// Arrange
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 	useInMemoryReaders(api)
 
-	// Act
+	// act
 	resp := performJSONRequest(t, http.MethodPost, "/api/v1/checks/clause-presence", map[string]any{
 		"document_ids":         []string{"00000000-0000-4000-8000-000000000001"},
 		"required_clause_text": "payment terms are required",
 	}, api.CreateClauseCheck)
 
-	if resp.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", resp.Code)
-	}
+	// assert
+	assert.Equal(t, http.StatusBadRequest, resp.Code)
 
-	// Assert
 	body := decodeJSONBody(t, resp)
-	if body.Error.Code != "invalid_argument" {
-		t.Fatalf("expected invalid_argument error code, got %q", body.Error.Code)
-	}
+	assert.Equal(t, "invalid_argument", body.Error.Code)
 }
 
 func TestGetCheckResults_ReturnsConflictWhenCheckIsNotCompleted(t *testing.T) {
-	// Arrange
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 	checkID := "00000000-0000-4000-8000-000000000001"
 	api.checks[checkID] = checkRun{
@@ -498,21 +434,18 @@ func TestGetCheckResults_ReturnsConflictWhenCheckIsNotCompleted(t *testing.T) {
 	req.SetPathValue("check_id", checkID)
 	w := httptest.NewRecorder()
 
-	// Act
+	// act
 	api.GetCheckResults(w, req)
 
-	// Assert
-	if w.Code != http.StatusConflict {
-		t.Fatalf("expected 409, got %d", w.Code)
-	}
+	// assert
+	assert.Equal(t, http.StatusConflict, w.Code)
 
 	body := decodeJSONBody(t, w)
-	if body.Error.Code != "results_not_ready" {
-		t.Fatalf("expected results_not_ready, got %q", body.Error.Code)
-	}
+	assert.Equal(t, "results_not_ready", body.Error.Code)
 }
 
 func TestDeleteCheck_RemovesCheckAndIdempotencyRecord(t *testing.T) {
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 
 	checkID := "00000000-0000-4000-8000-000000000021"
@@ -532,20 +465,19 @@ func TestDeleteCheck_RemovesCheckAndIdempotencyRecord(t *testing.T) {
 	req.SetPathValue("check_id", checkID)
 	w := httptest.NewRecorder()
 
+	// act
 	api.DeleteCheck(w, req)
 
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d", w.Code)
-	}
-	if _, ok := api.checks[checkID]; ok {
-		t.Fatal("expected check to be removed")
-	}
-	if _, ok := api.idempotency[checkTypeClause+":idem-delete-check"]; ok {
-		t.Fatal("expected idempotency record to be removed")
-	}
+	// assert
+	assert.Equal(t, http.StatusNoContent, w.Code)
+	_, checkExists := api.checks[checkID]
+	assert.False(t, checkExists)
+	_, recordExists := api.idempotency[checkTypeClause+":idem-delete-check"]
+	assert.False(t, recordExists)
 }
 
 func TestDeleteChecks_RemovesMultipleChecks(t *testing.T) {
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 
 	firstCheckID := "00000000-0000-4000-8000-000000000023"
@@ -571,29 +503,25 @@ func TestDeleteChecks_RemovesMultipleChecks(t *testing.T) {
 		CheckID:     secondCheckID,
 	}
 
+	// act
 	resp := performJSONRequest(t, http.MethodDelete, "/api/v1/guidelines", map[string]any{
 		"check_ids": []string{firstCheckID, secondCheckID},
 	}, api.DeleteChecks)
 
-	if resp.Code != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d", resp.Code)
-	}
-	if _, ok := api.checks[firstCheckID]; ok {
-		t.Fatal("expected first check to be removed")
-	}
-	if _, ok := api.checks[secondCheckID]; ok {
-		t.Fatal("expected second check to be removed")
-	}
-	if _, ok := api.idempotency[checkTypeClause+":idem-bulk-delete-1"]; ok {
-		t.Fatal("expected first idempotency record to be removed")
-	}
-	if _, ok := api.idempotency[checkTypeLLMReview+":idem-bulk-delete-2"]; ok {
-		t.Fatal("expected second idempotency record to be removed")
-	}
+	// assert
+	assert.Equal(t, http.StatusNoContent, resp.Code)
+	_, firstCheckExists := api.checks[firstCheckID]
+	_, secondCheckExists := api.checks[secondCheckID]
+	_, firstRecordExists := api.idempotency[checkTypeClause+":idem-bulk-delete-1"]
+	_, secondRecordExists := api.idempotency[checkTypeLLMReview+":idem-bulk-delete-2"]
+	assert.False(t, firstCheckExists)
+	assert.False(t, secondCheckExists)
+	assert.False(t, firstRecordExists)
+	assert.False(t, secondRecordExists)
 }
 
 func TestDeleteDocument_RemovesDocumentAndRelatedData(t *testing.T) {
-	// Arrange
+	// arrange
 	store := &stubDocumentStore{}
 	api := NewAPI(noopLogger{}, nil, store, nil)
 
@@ -630,35 +558,25 @@ func TestDeleteDocument_RemovesDocumentAndRelatedData(t *testing.T) {
 	req.SetPathValue("document_id", documentID)
 	w := httptest.NewRecorder()
 
-	// Act
+	// act
 	api.DeleteDocument(w, req)
 
-	// Assert
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d", w.Code)
-	}
-	if store.deletedCalls != 1 {
-		t.Fatalf("expected one storage delete call, got %d", store.deletedCalls)
-	}
-	if len(store.deletedKeys) != 1 || store.deletedKeys[0] != "documents/test.pdf" {
-		t.Fatalf("unexpected deleted keys: %#v", store.deletedKeys)
-	}
-	if _, ok := api.documents[documentID]; ok {
-		t.Fatal("expected document to be removed")
-	}
-	if _, ok := api.checks[checkID]; ok {
-		t.Fatal("expected related check to be removed")
-	}
-	if _, ok := api.idempotency[checkTypeClause+":idem-1"]; ok {
-		t.Fatal("expected related idempotency record to be removed")
-	}
-	if _, ok := api.copyEvents["event-1"]; ok {
-		t.Fatal("expected related copy event to be removed")
-	}
+	// assert
+	assert.Equal(t, http.StatusNoContent, w.Code)
+	assert.Equal(t, 1, store.deletedCalls)
+	assert.Equal(t, []string{"documents/test.pdf"}, store.deletedKeys)
+	_, documentExists := api.documents[documentID]
+	_, checkExists := api.checks[checkID]
+	_, recordExists := api.idempotency[checkTypeClause+":idem-1"]
+	_, copyEventExists := api.copyEvents["event-1"]
+	assert.False(t, documentExists)
+	assert.False(t, checkExists)
+	assert.False(t, recordExists)
+	assert.False(t, copyEventExists)
 }
 
 func TestDeleteDocument_KeepsMetadataWhenStorageDeleteFails(t *testing.T) {
-	// Arrange
+	// arrange
 	store := &stubDocumentStore{deleteErr: errors.New("storage is down")}
 	api := NewAPI(noopLogger{}, nil, store, nil)
 
@@ -677,20 +595,17 @@ func TestDeleteDocument_KeepsMetadataWhenStorageDeleteFails(t *testing.T) {
 	req.SetPathValue("document_id", documentID)
 	w := httptest.NewRecorder()
 
-	// Act
+	// act
 	api.DeleteDocument(w, req)
 
-	// Assert
-	if w.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502, got %d", w.Code)
-	}
-	if _, ok := api.documents[documentID]; !ok {
-		t.Fatal("expected document to remain when storage delete fails")
-	}
+	// assert
+	assert.Equal(t, http.StatusBadGateway, w.Code)
+	_, documentExists := api.documents[documentID]
+	assert.True(t, documentExists)
 }
 
 func TestDeleteContract_RemovesRelatedChecksAndCopyEvents(t *testing.T) {
-	// Arrange
+	// arrange
 	store := &stubDocumentStore{}
 	api := NewAPI(noopLogger{}, nil, store, nil)
 
@@ -742,41 +657,30 @@ func TestDeleteContract_RemovesRelatedChecksAndCopyEvents(t *testing.T) {
 	req.SetPathValue("contract_id", contractID)
 	w := httptest.NewRecorder()
 
-	// Act
+	// act
 	api.DeleteContract(w, req)
 
-	// Assert
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d", w.Code)
-	}
-	if len(store.deletedKeys) != 2 {
-		t.Fatalf("expected two storage deletes, got %#v", store.deletedKeys)
-	}
-	if _, ok := api.contracts[contractID]; ok {
-		t.Fatal("expected contract to be removed")
-	}
-	if _, ok := api.documents[firstDocumentID]; ok {
-		t.Fatal("expected first document to be removed")
-	}
-	if _, ok := api.documents[secondDocumentID]; ok {
-		t.Fatal("expected second document to be removed")
-	}
-	if _, ok := api.checks[checkID]; ok {
-		t.Fatal("expected related check to be removed")
-	}
-	if _, ok := api.idempotency[checkTypeClause+":idem-contract-delete"]; ok {
-		t.Fatal("expected related idempotency key to be removed")
-	}
-	if _, ok := api.copyEvents["event-contract-1"]; ok {
-		t.Fatal("expected first copy event to be removed")
-	}
-	if _, ok := api.copyEvents["event-contract-2"]; ok {
-		t.Fatal("expected second copy event to be removed")
-	}
+	// assert
+	assert.Equal(t, http.StatusNoContent, w.Code)
+	assert.Len(t, store.deletedKeys, 2)
+	_, contractExists := api.contracts[contractID]
+	_, firstDocumentExists := api.documents[firstDocumentID]
+	_, secondDocumentExists := api.documents[secondDocumentID]
+	_, checkExists := api.checks[checkID]
+	_, recordExists := api.idempotency[checkTypeClause+":idem-contract-delete"]
+	_, firstCopyEventExists := api.copyEvents["event-contract-1"]
+	_, secondCopyEventExists := api.copyEvents["event-contract-2"]
+	assert.False(t, contractExists)
+	assert.False(t, firstDocumentExists)
+	assert.False(t, secondDocumentExists)
+	assert.False(t, checkExists)
+	assert.False(t, recordExists)
+	assert.False(t, firstCopyEventExists)
+	assert.False(t, secondCopyEventExists)
 }
 
 func TestListDocuments_FiltersByTags(t *testing.T) {
-	// Arrange
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 	useInMemoryReaders(api)
 
@@ -787,9 +691,7 @@ func TestListDocuments_FiltersByTags(t *testing.T) {
 			"content_base64": "dGVzdA==",
 			"tags":           tags,
 		}, api.CreateDocument)
-		if resp.Code != http.StatusCreated {
-			t.Fatalf("expected 201, got %d", resp.Code)
-		}
+		assert.Equal(t, http.StatusCreated, resp.Code)
 	}
 
 	create([]string{"Finance", "MSA"})
@@ -799,13 +701,11 @@ func TestListDocuments_FiltersByTags(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/documents?tag=msa&tag=vendor", nil)
 	w := httptest.NewRecorder()
 
-	// Act
+	// act
 	api.ListDocuments(w, req)
 
-	// Assert
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
+	// assert
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var body struct {
 		Total int `json:"total"`
@@ -815,13 +715,11 @@ func TestListDocuments_FiltersByTags(t *testing.T) {
 	}
 	decodeJSONBodyInto(t, w, &body)
 
-	if body.Total != 2 {
-		t.Fatalf("expected 2 documents for OR tag filter, got %d", body.Total)
-	}
+	assert.Equal(t, 2, body.Total)
 }
 
 func TestGetDocumentText_ReturnsExtractedText(t *testing.T) {
-	// Arrange
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 	useInMemoryReaders(api)
 	documentID := "00000000-0000-4000-8000-000000000051"
@@ -838,13 +736,11 @@ func TestGetDocumentText_ReturnsExtractedText(t *testing.T) {
 	req.SetPathValue("document_id", documentID)
 	w := httptest.NewRecorder()
 
-	// Act
+	// act
 	api.GetDocumentText(w, req)
 
-	// Assert
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
+	// assert
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var body struct {
 		DocumentID string `json:"document_id"`
@@ -853,39 +749,29 @@ func TestGetDocumentText_ReturnsExtractedText(t *testing.T) {
 	}
 	decodeJSONBodyInto(t, w, &body)
 
-	if body.DocumentID != documentID {
-		t.Fatalf("expected document id %q, got %q", documentID, body.DocumentID)
-	}
-	if !body.HasText {
-		t.Fatal("expected has_text=true")
-	}
-	if body.Text == "" {
-		t.Fatal("expected non-empty extracted text")
-	}
+	assert.Equal(t, documentID, body.DocumentID)
+	assert.True(t, body.HasText)
+	assert.NotEmpty(t, body.Text)
 }
 
 func TestSearchContracts_ReturnsBadRequestForInvalidStrategy(t *testing.T) {
-	// Arrange
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 
-	// Act
+	// act
 	resp := performJSONRequest(t, http.MethodPost, "/api/v1/contracts/search", map[string]any{
 		"query_text": "payment terms",
 		"strategy":   "hybrid",
 	}, api.SearchContracts)
 
-	// Assert
-	if resp.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", resp.Code)
-	}
+	// assert
+	assert.Equal(t, http.StatusBadRequest, resp.Code)
 	body := decodeJSONBody(t, resp)
-	if body.Error.Code != "invalid_argument" {
-		t.Fatalf("expected invalid_argument, got %q", body.Error.Code)
-	}
+	assert.Equal(t, "invalid_argument", body.Error.Code)
 }
 
 func TestSearchContracts_PassesStrategyToAI(t *testing.T) {
-	// Arrange
+	// arrange
 	aiClient := &searchCapturingAIClient{}
 	api := NewAPI(noopLogger{}, aiClient, nil, nil)
 	useInMemoryReaders(api)
@@ -897,45 +783,37 @@ func TestSearchContracts_PassesStrategyToAI(t *testing.T) {
 		UpdatedAt: time.Now().UTC(),
 	}
 
-	// Act
+	// act
 	resp := performJSONRequest(t, http.MethodPost, "/api/v1/contracts/search", map[string]any{
 		"query_text": "payment terms",
 		"strategy":   "strict",
 	}, api.SearchContracts)
 
-	// Assert
-	if resp.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.Code)
-	}
-	if aiClient.req.Strategy != "strict" {
-		t.Fatalf("expected strict strategy, got %q", aiClient.req.Strategy)
-	}
-	if aiClient.req.ResultMode != "sections" {
-		t.Fatalf("expected default sections result mode, got %q", aiClient.req.ResultMode)
-	}
-	if len(aiClient.req.DocumentIDs) != 1 || aiClient.req.DocumentIDs[0] != documentID {
-		t.Fatalf("unexpected document ids: %#v", aiClient.req.DocumentIDs)
-	}
+	// assert
+	assert.Equal(t, http.StatusOK, resp.Code)
+	assert.Equal(t, "strict", aiClient.req.Strategy)
+	assert.Equal(t, "sections", aiClient.req.ResultMode)
+	assert.Equal(t, []string{documentID}, aiClient.req.DocumentIDs)
 }
 
 func TestSearchContracts_ReturnsBadRequestForInvalidResultMode(t *testing.T) {
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 
+	// act
 	resp := performJSONRequest(t, http.MethodPost, "/api/v1/contracts/search", map[string]any{
 		"query_text":  "payment terms",
 		"result_mode": "documents",
 	}, api.SearchContracts)
 
-	if resp.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", resp.Code)
-	}
+	// assert
+	assert.Equal(t, http.StatusBadRequest, resp.Code)
 	body := decodeJSONBody(t, resp)
-	if body.Error.Code != "invalid_argument" {
-		t.Fatalf("expected invalid_argument, got %q", body.Error.Code)
-	}
+	assert.Equal(t, "invalid_argument", body.Error.Code)
 }
 
 func TestSearchContracts_CollapsesResultsByContract(t *testing.T) {
+	// arrange
 	aiClient := &searchCapturingAIClient{}
 	api := NewAPI(noopLogger{}, aiClient, nil, nil)
 	useInMemoryReaders(api)
@@ -962,36 +840,26 @@ func TestSearchContracts_CollapsesResultsByContract(t *testing.T) {
 	}
 	aiClient.searchResponse = ai.SearchSectionsResult{Items: aiClientResp}
 
+	// act
 	resp := performJSONRequest(t, http.MethodPost, "/api/v1/contracts/search", map[string]any{
 		"query_text":  "payment terms",
 		"result_mode": "contracts",
 		"limit":       3,
 	}, api.SearchContracts)
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.Code)
-	}
-	if aiClient.req.ResultMode != "contracts" {
-		t.Fatalf("expected contracts result mode, got %q", aiClient.req.ResultMode)
-	}
-	if aiClient.req.Limit != 15 {
-		t.Fatalf("expected overfetch limit 15, got %d", aiClient.req.Limit)
-	}
+	// assert
+	assert.Equal(t, http.StatusOK, resp.Code)
+	assert.Equal(t, "contracts", aiClient.req.ResultMode)
+	assert.Equal(t, 15, aiClient.req.Limit)
 
 	var body contractSearchResponse
-	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if len(body.Items) != 1 {
-		t.Fatalf("expected one collapsed contract result, got %d", len(body.Items))
-	}
-	if body.Items[0].DocumentID != "doc-2" {
-		t.Fatalf("expected strongest document to represent the contract, got %q", body.Items[0].DocumentID)
-	}
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
+	require.Len(t, body.Items, 1)
+	assert.Equal(t, "doc-2", body.Items[0].DocumentID)
 }
 
 func TestSearchContracts_PropagatesRequestContext(t *testing.T) {
-	// Arrange
+	// arrange
 	aiClient := &searchCapturingAIClient{}
 	api := NewAPI(noopLogger{}, aiClient, nil, nil)
 	useInMemoryReaders(api)
@@ -1012,16 +880,12 @@ func TestSearchContracts_PropagatesRequestContext(t *testing.T) {
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	// Act
+	// act
 	api.SearchContracts(w, req)
 
-	// Assert
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
-	if got := aiClient.ctx.Value(ctxKey("trace_id")); got != "trace-123" {
-		t.Fatalf("expected propagated request context value, got %#v", got)
-	}
+	// assert
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "trace-123", aiClient.ctx.Value(ctxKey("trace_id")))
 }
 
 type errorResponse struct {
@@ -1033,9 +897,7 @@ type errorResponse struct {
 func performJSONRequest(t *testing.T, method, path string, payload any, handler http.HandlerFunc) *httptest.ResponseRecorder {
 	t.Helper()
 	data, err := json.Marshal(payload)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	req := httptest.NewRequest(method, path, bytes.NewReader(data))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -1046,15 +908,13 @@ func performJSONRequest(t *testing.T, method, path string, payload any, handler 
 func decodeJSONBody(t *testing.T, resp *httptest.ResponseRecorder) errorResponse {
 	t.Helper()
 	var out errorResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil && err != io.EOF {
-		t.Fatal(err)
-	}
+	err := json.NewDecoder(resp.Body).Decode(&out)
+	require.True(t, err == nil || err == io.EOF)
 	return out
 }
 
 func decodeJSONBodyInto(t *testing.T, resp *httptest.ResponseRecorder, out any) {
 	t.Helper()
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil && err != io.EOF {
-		t.Fatal(err)
-	}
+	err := json.NewDecoder(resp.Body).Decode(out)
+	require.True(t, err == nil || err == io.EOF)
 }

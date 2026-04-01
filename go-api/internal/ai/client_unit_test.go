@@ -9,12 +9,15 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAnalyzeClause_PostsExpectedRequest(t *testing.T) {
 	t.Parallel()
 
-	// Arrange
+	// arrange
 	var seenPath string
 	var seenAuth string
 	var seenInternalToken string
@@ -24,9 +27,7 @@ func TestAnalyzeClause_PostsExpectedRequest(t *testing.T) {
 		seenPath = r.URL.Path
 		seenAuth = r.Header.Get("Authorization")
 		seenInternalToken = r.Header.Get("X-Internal-Service-Token")
-		if err := json.NewDecoder(r.Body).Decode(&seenBody); err != nil {
-			t.Fatalf("decode request body: %v", err)
-		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&seenBody))
 		w.WriteHeader(http.StatusAccepted)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"job_id":   "job-1",
@@ -47,7 +48,7 @@ func TestAnalyzeClause_PostsExpectedRequest(t *testing.T) {
 
 	client := NewClient(ts.URL, "secret-token", time.Second)
 
-	// Act
+	// act
 	result, err := client.AnalyzeClause(context.Background(), AnalyzeClauseRequest{
 		JobID:              "job-1",
 		RequestID:          "req-1",
@@ -56,40 +57,28 @@ func TestAnalyzeClause_PostsExpectedRequest(t *testing.T) {
 		RequiredClauseText: "must include payment terms",
 		ContextHint:        "billing",
 	})
-	if err != nil {
-		t.Fatalf("AnalyzeClause returned error: %v", err)
-	}
+	require.NoError(t, err)
 
-	// Assert
-	if seenPath != "/internal/v1/analyze/clause" {
-		t.Fatalf("unexpected path: %q", seenPath)
-	}
-	if seenAuth != "Bearer secret-token" {
-		t.Fatalf("unexpected authorization header: %q", seenAuth)
-	}
-	if seenInternalToken != "secret-token" {
-		t.Fatalf("unexpected internal service token header: %q", seenInternalToken)
-	}
-	if seenBody.CheckID != "check-1" || seenBody.RequiredClauseText == "" {
-		t.Fatalf("unexpected body payload: %#v", seenBody)
-	}
-	if len(result.Items) != 1 || result.Items[0].DocumentID != "doc-1" {
-		t.Fatalf("unexpected analyze result items: %#v", result.Items)
-	}
+	// assert
+	assert.Equal(t, "/internal/v1/analyze/clause", seenPath)
+	assert.Equal(t, "Bearer secret-token", seenAuth)
+	assert.Equal(t, "secret-token", seenInternalToken)
+	assert.Equal(t, "check-1", seenBody.CheckID)
+	assert.NotEmpty(t, seenBody.RequiredClauseText)
+	require.Len(t, result.Items, 1)
+	assert.Equal(t, "doc-1", result.Items[0].DocumentID)
 }
 
 func TestAnalyzeLLMReview_PostsExpectedRequest(t *testing.T) {
 	t.Parallel()
 
-	// Arrange
+	// arrange
 	var seenPath string
 	var seenBody AnalyzeLLMReviewRequest
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seenPath = r.URL.Path
-		if err := json.NewDecoder(r.Body).Decode(&seenBody); err != nil {
-			t.Fatalf("decode request body: %v", err)
-		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&seenBody))
 		w.WriteHeader(http.StatusAccepted)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"job_id":   "job-llm-1",
@@ -110,7 +99,7 @@ func TestAnalyzeLLMReview_PostsExpectedRequest(t *testing.T) {
 
 	client := NewClient(ts.URL, "", time.Second)
 
-	// Act
+	// act
 	result, err := client.AnalyzeLLMReview(context.Background(), AnalyzeLLMReviewRequest{
 		JobID:        "job-llm-1",
 		CheckID:      "check-llm-1",
@@ -120,18 +109,13 @@ func TestAnalyzeLLMReview_PostsExpectedRequest(t *testing.T) {
 			{DocumentID: "doc-1", Filename: "contract.pdf", Text: "Contract text"},
 		},
 	})
-	if err != nil {
-		t.Fatalf("AnalyzeLLMReview returned error: %v", err)
-	}
+	require.NoError(t, err)
 
-	// Assert
-	if seenPath != "/internal/v1/analyze/llm-review" {
-		t.Fatalf("unexpected path: %q", seenPath)
-	}
-	if seenBody.Instructions == "" || len(seenBody.Documents) != 1 || seenBody.Documents[0].Text == "" {
-		t.Fatalf("unexpected body payload: %#v", seenBody)
-	}
-	if len(result.Items) != 1 || result.Items[0].Outcome != "review" {
-		t.Fatalf("unexpected llm review result items: %#v", result.Items)
-	}
+	// assert
+	assert.Equal(t, "/internal/v1/analyze/llm-review", seenPath)
+	assert.NotEmpty(t, seenBody.Instructions)
+	require.Len(t, seenBody.Documents, 1)
+	assert.NotEmpty(t, seenBody.Documents[0].Text)
+	require.Len(t, result.Items, 1)
+	assert.Equal(t, "review", result.Items[0].Outcome)
 }

@@ -7,25 +7,28 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewClient_TrimsBaseURLAndDefaultsTimeout(t *testing.T) {
+	// arrange
+
+	// act
 	client := NewClient("https://example.test/", "", 0)
 
-	if client.baseURL != "https://example.test" {
-		t.Fatalf("expected trimmed base url, got %q", client.baseURL)
-	}
-	if client.httpClient.Timeout != 10*time.Second {
-		t.Fatalf("expected default timeout, got %v", client.httpClient.Timeout)
-	}
+	// assert
+	assert.Equal(t, "https://example.test", client.baseURL)
+	assert.Equal(t, 10*time.Second, client.httpClient.Timeout)
 }
 
 func TestPostJSONWithResponse_ReturnsErrorForUnexpectedStatus(t *testing.T) {
 	t.Parallel()
 
+	// arrange
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, " request failed ", http.StatusBadGateway)
 	}))
@@ -33,18 +36,17 @@ func TestPostJSONWithResponse_ReturnsErrorForUnexpectedStatus(t *testing.T) {
 
 	client := NewClient(ts.URL, "", time.Second)
 
+	// act
 	err := client.postJSONWithResponse(context.Background(), "/internal/v1/test", map[string]string{"ok": "yes"}, &struct{}{})
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if got := err.Error(); got != "unexpected status 502: request failed" {
-		t.Fatalf("unexpected error: %q", got)
-	}
+
+	// assert
+	require.EqualError(t, err, "unexpected status 502: request failed")
 }
 
 func TestPostJSONWithResponse_ReturnsDecodeErrorForInvalidJSON(t *testing.T) {
 	t.Parallel()
 
+	// arrange
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 		_, _ = w.Write([]byte("{"))
@@ -53,40 +55,38 @@ func TestPostJSONWithResponse_ReturnsDecodeErrorForInvalidJSON(t *testing.T) {
 
 	client := NewClient(ts.URL, "", time.Second)
 
+	// act
 	err := client.postJSONWithResponse(context.Background(), "/internal/v1/test", map[string]string{"ok": "yes"}, &struct{}{})
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "decode response:") {
-		t.Fatalf("expected decode response error, got %q", err.Error())
-	}
+
+	// assert
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "decode response:")
 }
 
 func TestPostJSON_ReturnsMarshalError(t *testing.T) {
 	t.Parallel()
 
+	// arrange
 	client := NewClient("https://example.test", "", time.Second)
 
+	// act
 	err := client.postJSON(context.Background(), "/internal/v1/test", map[string]any{"bad": func() {}})
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "marshal request:") {
-		t.Fatalf("expected marshal request error, got %q", err.Error())
-	}
+
+	// assert
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "marshal request:")
 }
 
 func TestContractChat_PostsExpectedRequest(t *testing.T) {
 	t.Parallel()
 
+	// arrange
 	var seenPath string
 	var seenBody ContractChatRequest
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seenPath = r.URL.Path
-		if err := json.NewDecoder(r.Body).Decode(&seenBody); err != nil {
-			t.Fatalf("decode request body: %v", err)
-		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&seenBody))
 		w.WriteHeader(http.StatusAccepted)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"job_id":   "job-chat-1",
@@ -104,30 +104,28 @@ func TestContractChat_PostsExpectedRequest(t *testing.T) {
 
 	client := NewClient(ts.URL, "", time.Second)
 
+	// act
 	result, err := client.ContractChat(context.Background(), ContractChatRequest{
 		JobID:      "job-chat-1",
 		ContractID: "contract-1",
 		Messages:   []ContractChatMessage{{Role: "user", Content: "Question?"}},
 		Documents:  []ContractChatDocument{{DocumentID: "doc-1", Text: "Contract text"}},
 	})
-	if err != nil {
-		t.Fatalf("ContractChat returned error: %v", err)
-	}
+	require.NoError(t, err)
 
-	if seenPath != "/internal/v1/chat/contract" {
-		t.Fatalf("unexpected path: %q", seenPath)
-	}
-	if seenBody.ContractID != "contract-1" || len(seenBody.Messages) != 1 || len(seenBody.Documents) != 1 {
-		t.Fatalf("unexpected body payload: %#v", seenBody)
-	}
-	if result.Answer != "Answer" || len(result.Citations) != 1 {
-		t.Fatalf("unexpected result: %#v", result)
-	}
+	// assert
+	assert.Equal(t, "/internal/v1/chat/contract", seenPath)
+	assert.Equal(t, "contract-1", seenBody.ContractID)
+	assert.Len(t, seenBody.Messages, 1)
+	assert.Len(t, seenBody.Documents, 1)
+	assert.Equal(t, "Answer", result.Answer)
+	assert.Len(t, result.Citations, 1)
 }
 
 func TestExtract_PostsExpectedRequest(t *testing.T) {
 	t.Parallel()
 
+	// arrange
 	var seenPath string
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -150,27 +148,25 @@ func TestExtract_PostsExpectedRequest(t *testing.T) {
 
 	client := NewClient(ts.URL, "", time.Second)
 
+	// act
 	result, err := client.Extract(context.Background(), ExtractRequest{
 		JobID:      "job-extract-1",
 		DocumentID: "doc-1",
 		StorageURI: "s3://bucket/doc-1.pdf",
 		MIMEType:   "application/pdf",
 	})
-	if err != nil {
-		t.Fatalf("Extract returned error: %v", err)
-	}
+	require.NoError(t, err)
 
-	if seenPath != "/internal/v1/extract" {
-		t.Fatalf("unexpected path: %q", seenPath)
-	}
-	if result.MIMEType != "application/pdf" || len(result.Pages) != 1 {
-		t.Fatalf("unexpected result: %#v", result)
-	}
+	// assert
+	assert.Equal(t, "/internal/v1/extract", seenPath)
+	assert.Equal(t, "application/pdf", result.MIMEType)
+	assert.Len(t, result.Pages, 1)
 }
 
 func TestIndex_PostsExpectedRequest(t *testing.T) {
 	t.Parallel()
 
+	// arrange
 	var seenPath string
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -192,27 +188,25 @@ func TestIndex_PostsExpectedRequest(t *testing.T) {
 
 	client := NewClient(ts.URL, "", time.Second)
 
+	// act
 	result, err := client.Index(context.Background(), IndexRequest{
 		JobID:           "job-index-1",
 		DocumentID:      "doc-1",
 		VersionChecksum: "abc123",
 		ExtractedText:   "text",
 	})
-	if err != nil {
-		t.Fatalf("Index returned error: %v", err)
-	}
+	require.NoError(t, err)
 
-	if seenPath != "/internal/v1/index" {
-		t.Fatalf("unexpected path: %q", seenPath)
-	}
-	if result.DocumentID != "doc-1" || !result.Indexed {
-		t.Fatalf("unexpected result: %#v", result)
-	}
+	// assert
+	assert.Equal(t, "/internal/v1/index", seenPath)
+	assert.Equal(t, "doc-1", result.DocumentID)
+	assert.True(t, result.Indexed)
 }
 
 func TestSearchSections_PostsExpectedRequest(t *testing.T) {
 	t.Parallel()
 
+	// arrange
 	var seenPath string
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -239,6 +233,7 @@ func TestSearchSections_PostsExpectedRequest(t *testing.T) {
 
 	client := NewClient(ts.URL, "", time.Second)
 
+	// act
 	result, err := client.SearchSections(context.Background(), SearchSectionsRequest{
 		JobID:       "job-search-1",
 		QueryText:   "payment terms",
@@ -246,14 +241,10 @@ func TestSearchSections_PostsExpectedRequest(t *testing.T) {
 		Limit:       3,
 		Strategy:    "semantic",
 	})
-	if err != nil {
-		t.Fatalf("SearchSections returned error: %v", err)
-	}
+	require.NoError(t, err)
 
-	if seenPath != "/internal/v1/search/sections" {
-		t.Fatalf("unexpected path: %q", seenPath)
-	}
-	if len(result.Items) != 1 || result.Items[0].DocumentID != "doc-1" {
-		t.Fatalf("unexpected result: %#v", result)
-	}
+	// assert
+	assert.Equal(t, "/internal/v1/search/sections", seenPath)
+	require.Len(t, result.Items, 1)
+	assert.Equal(t, "doc-1", result.Items[0].DocumentID)
 }
