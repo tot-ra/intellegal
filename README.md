@@ -48,7 +48,11 @@ This process is currently semi-manual, slow, and hard to scale.
 - Review where a clause/entity appears, with page-level evidence snippets.
   Spec: [Contract Comparison](./docs/contract-comparison.md)
 
-4. Audit and Traceability
+4. Contracts RAG Assistant
+- Ask questions from the contracts list, let the assistant retrieve likely matches, expand the strongest contracts, and push result IDs back into the main list view.
+  Spec: [Contracts RAG Assistant](./docs/contracts-rag-assistant.md)
+
+5. Audit and Traceability
 - Inspect who ran a check, when, and what evidence supported the result.
 
 ### 📝 User Stories (MVP)
@@ -56,7 +60,8 @@ This process is currently semi-manual, slow, and hard to scale.
 2. As a Legal Reviewer, I choose between lexical clause checks, strict keyword checks, and Gemini reviews depending on the type of legal question.
 3. As a Legal Reviewer, I open result details and see source snippet + page so I can trust and verify findings.
 4. As a Legal Operations Lead, I view run history and status so I can report progress and bottlenecks.
-5. As a Platform Engineer, I inspect pipeline failures (OCR/indexing/API) so I can resolve issues fast.
+5. As a Legal Reviewer, I ask cross-contract questions from the contracts list and apply returned result IDs back into the table so I can iteratively narrow the working set.
+6. As a Platform Engineer, I inspect pipeline failures (OCR/indexing/API) so I can resolve issues fast.
 
 ### ✨ Feature List (MVP)
 - Document ingest (PDF/JPEG)
@@ -65,6 +70,7 @@ This process is currently semi-manual, slow, and hard to scale.
 - Gemini contract review
 - Strict keyword checks
 - Contract comparison
+- Contracts RAG assistant with interactive result sets
 - Result confidence + evidence snippets
 - Check run history
 - External REST API copy storage + status
@@ -73,6 +79,7 @@ This process is currently semi-manual, slow, and hard to scale.
 ### 📚 Feature Specs
 - [Document Ingestion](./docs/document-ingestion.md)
 - [Contract Comparison](./docs/contract-comparison.md)
+- [Contracts RAG Assistant](./docs/contracts-rag-assistant.md)
 - [Clause-Presence Checks](./docs/clause-presence-checks.md)
 
 ### 🔭 Non-MVP (Phase 2)
@@ -103,6 +110,7 @@ This process is currently semi-manual, slow, and hard to scale.
 - Upload panel
 - Filters (source, status, date)
 - Contract detail drawer
+- Ask AI assistant with expandable result blocks and apply-to-list actions
 
 3. Checks
 - New Guideline Run
@@ -409,15 +417,16 @@ Endpoints:
 2. Go API stores original files and records metadata.
 3. Extraction pipeline parses PDF text and runs OCR for image-based inputs.
 4. Text is normalized, chunked, embedded, and indexed in Qdrant.
-5. Legal user submits a check:
+5. Legal user submits a check or asks a contracts-list question:
 - "Find contracts missing clause X"
 - "Run a Gemini review for termination for convenience"
-6. Retrieval fetches relevant chunks with metadata filters.
+- "Which contracts mention late fees and can you narrow the list?"
+6. Retrieval fetches relevant chunks with metadata filters and, for contracts-list chat, expands the strongest matching contracts before answering.
 7. Python AI pipeline evaluates results and produces:
 - matched/not-matched status
 - confidence
 - evidence snippets (with page/chunk references)
-8. Frontend displays findings and detailed rationale.
+8. Frontend displays findings, detailed rationale, and assistant result sets that can be applied back into the contracts list.
 9. Go API calls external REST API to store additional compliant copy.
 10. Audit log records request, model/version, and result summary.
 
