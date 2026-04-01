@@ -9,10 +9,13 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCopyDocument_RetriesAndEventuallySucceeds(t *testing.T) {
-	// Arrange
+	// arrange
 	attempts := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
@@ -21,12 +24,8 @@ func TestCopyDocument_RetriesAndEventuallySucceeds(t *testing.T) {
 			_, _ = w.Write([]byte(`{"error":"upstream unavailable"}`))
 			return
 		}
-		if r.URL.Path != "/copies" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
-		}
-		if got := r.Header.Get("Authorization"); got != "Bearer top-secret" {
-			t.Fatalf("unexpected auth header: %q", got)
-		}
+		assert.Equal(t, "/copies", r.URL.Path)
+		assert.Equal(t, "Bearer top-secret", r.Header.Get("Authorization"))
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"copy_id":"cp-1","status":"accepted"}`))
 	}))
@@ -34,26 +33,18 @@ func TestCopyDocument_RetriesAndEventuallySucceeds(t *testing.T) {
 
 	client := NewClient(ts.URL, "top-secret", time.Second, 3)
 
-	// Act
+	// act
 	result, err := client.CopyDocument(context.Background(), CopyRequest{DocumentID: "doc-1", Filename: "contract.pdf"})
-	if err != nil {
-		t.Fatalf("expected success, got error: %v", err)
-	}
+	require.NoError(t, err)
 
-	// Assert
-	if attempts != 3 {
-		t.Fatalf("expected 3 attempts, got %d", attempts)
-	}
-	if result.Attempts != 3 {
-		t.Fatalf("expected result attempts=3, got %d", result.Attempts)
-	}
-	if result.Body["copy_id"] != "cp-1" {
-		t.Fatalf("expected parsed response body, got %#v", result.Body)
-	}
+	// assert
+	assert.Equal(t, 3, attempts)
+	assert.Equal(t, 3, result.Attempts)
+	assert.Equal(t, "cp-1", result.Body["copy_id"])
 }
 
 func TestCopyDocument_ReturnsNonRetriableErrorForBadRequest(t *testing.T) {
-	// Arrange
+	// arrange
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte("invalid payload"))
@@ -62,41 +53,27 @@ func TestCopyDocument_ReturnsNonRetriableErrorForBadRequest(t *testing.T) {
 
 	client := NewClient(ts.URL, "", time.Second, 5)
 
-	// Act
+	// act
 	_, err := client.CopyDocument(context.Background(), CopyRequest{DocumentID: "doc-1"})
-	if err == nil {
-		t.Fatal("expected an error")
-	}
+	require.Error(t, err)
 
-	// Assert
+	// assert
 	var callErr *CallError
-	if ok := errors.As(err, &callErr); !ok {
-		t.Fatalf("expected CallError, got %T", err)
-	}
-	if callErr.Retriable {
-		t.Fatal("expected non-retriable error")
-	}
-	if callErr.StatusCode != http.StatusBadRequest {
-		t.Fatalf("expected status 400, got %d", callErr.StatusCode)
-	}
-	if callErr.Attempts != 1 {
-		t.Fatalf("expected 1 attempt for non-retriable status, got %d", callErr.Attempts)
-	}
+	require.True(t, errors.As(err, &callErr))
+	assert.False(t, callErr.Retriable)
+	assert.Equal(t, http.StatusBadRequest, callErr.StatusCode)
+	assert.Equal(t, 1, callErr.Attempts)
 }
 
 func TestCopyDocument_ReturnsErrorWhenClientIsDisabled(t *testing.T) {
-	// Arrange
+	// arrange
 	client := NewClient("", "", time.Second, 3)
 
-	// Act
-	if client.Enabled() {
-		t.Fatal("expected disabled client")
-	}
-
+	// act
+	enabled := client.Enabled()
 	_, err := client.CopyDocument(context.Background(), CopyRequest{DocumentID: "doc-1"})
 
-	// Assert
-	if err == nil {
-		t.Fatal("expected error for disabled client")
-	}
+	// assert
+	assert.False(t, enabled)
+	require.Error(t, err)
 }

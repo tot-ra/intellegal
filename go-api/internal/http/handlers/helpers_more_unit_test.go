@@ -12,6 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"legal-doc-intel/go-api/internal/ai"
 	"legal-doc-intel/go-api/internal/db"
 
@@ -19,6 +22,7 @@ import (
 )
 
 func TestDecodeJSON_RejectsUnknownFields(t *testing.T) {
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/checks/clause-presence", bytes.NewReader([]byte(`{
@@ -28,39 +32,42 @@ func TestDecodeJSON_RejectsUnknownFields(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
+	// act
 	api.CreateClauseCheck(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
-	}
+	// assert
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	body := decodeJSONBody(t, rec)
-	if body.Error.Code != "invalid_argument" {
-		t.Fatalf("expected invalid_argument, got %q", body.Error.Code)
-	}
+	assert.Equal(t, "invalid_argument", body.Error.Code)
 }
 
 func TestExtensionForFilename_UsesFilenameThenMIMEFallback(t *testing.T) {
-	if got := extensionForFilename("contract.PDF", "image/png"); got != ".pdf" {
-		t.Fatalf("expected filename extension to win, got %q", got)
-	}
-	if got := extensionForFilename("contract", "image/png"); got != ".png" {
-		t.Fatalf("expected png fallback, got %q", got)
-	}
-	if got := extensionForFilename("contract", "image/jpeg"); got != ".jpg" {
-		t.Fatalf("expected jpg default, got %q", got)
-	}
+	// arrange
+
+	// act
+	gotPDF := extensionForFilename("contract.PDF", "image/png")
+	gotPNG := extensionForFilename("contract", "image/png")
+	gotJPG := extensionForFilename("contract", "image/jpeg")
+
+	// assert
+	assert.Equal(t, ".pdf", gotPDF)
+	assert.Equal(t, ".png", gotPNG)
+	assert.Equal(t, ".jpg", gotJPG)
 }
 
 func TestPathParam_UsesChiParamBeforePathValue(t *testing.T) {
+	// arrange
 	req := httptest.NewRequest(http.MethodGet, "/ignored", nil)
 	req.SetPathValue("document_id", " path-value ")
 
 	routeCtx := chiRouteContextWithParam("document_id", " chi-value ")
 	req = req.WithContext(routeCtx)
 
-	if got := pathParam(req, "document_id"); got != "chi-value" {
-		t.Fatalf("expected chi route param, got %q", got)
-	}
+	// act
+	got := pathParam(req, "document_id")
+
+	// assert
+	assert.Equal(t, "chi-value", got)
 }
 
 func chiRouteContextWithParam(key, value string) context.Context {
@@ -70,18 +77,21 @@ func chiRouteContextWithParam(key, value string) context.Context {
 }
 
 func TestSearchCandidateLimit_OverfetchesForContractMode(t *testing.T) {
-	if got := searchCandidateLimit(4, "sections"); got != 4 {
-		t.Fatalf("expected unchanged limit, got %d", got)
-	}
-	if got := searchCandidateLimit(4, "contracts"); got != 20 {
-		t.Fatalf("expected overfetch limit 20, got %d", got)
-	}
-	if got := searchCandidateLimit(20, "contracts"); got != 50 {
-		t.Fatalf("expected capped limit 50, got %d", got)
-	}
+	// arrange
+
+	// act
+	gotSections := searchCandidateLimit(4, "sections")
+	gotContractsMin := searchCandidateLimit(4, "contracts")
+	gotContractsMax := searchCandidateLimit(20, "contracts")
+
+	// assert
+	assert.Equal(t, 4, gotSections)
+	assert.Equal(t, 20, gotContractsMin)
+	assert.Equal(t, 50, gotContractsMax)
 }
 
 func TestCollapseContractSearchResults_KeepsBestItemPerGroup(t *testing.T) {
+	// arrange
 	items := collapseContractSearchResults([]contractSearchResultItem{
 		{DocumentID: "doc-1", ContractID: "contract-1", Score: 0.61, PageNumber: 5},
 		{DocumentID: "doc-2", ContractID: "contract-1", Score: 0.91, PageNumber: 2},
@@ -89,18 +99,14 @@ func TestCollapseContractSearchResults_KeepsBestItemPerGroup(t *testing.T) {
 		{DocumentID: "doc-4", ContractID: "", Score: 0.77, PageNumber: 1},
 	}, 3)
 
-	if len(items) != 3 {
-		t.Fatalf("expected 3 items, got %d", len(items))
-	}
-	if items[0].DocumentID != "doc-2" {
-		t.Fatalf("expected best contract hit first, got %q", items[0].DocumentID)
-	}
-	if items[1].DocumentID != "doc-3" {
-		t.Fatalf("expected best standalone document next, got %q", items[1].DocumentID)
-	}
+	// assert
+	require.Len(t, items, 3)
+	assert.Equal(t, "doc-2", items[0].DocumentID)
+	assert.Equal(t, "doc-3", items[1].DocumentID)
 }
 
 func TestMapAnalysisItems_FallsBackForMissingDocuments(t *testing.T) {
+	// arrange
 	items := mapAnalysisItems(
 		[]string{"doc-1", "doc-2"},
 		[]ai.AnalysisResultItem{
@@ -117,18 +123,16 @@ func TestMapAnalysisItems_FallsBackForMissingDocuments(t *testing.T) {
 		"fallback",
 	)
 
-	if len(items) != 2 {
-		t.Fatalf("expected 2 items, got %d", len(items))
-	}
-	if items[0].Outcome != "match" || len(items[0].Evidence) != 1 {
-		t.Fatalf("unexpected mapped item: %#v", items[0])
-	}
-	if items[1].Outcome != "review" || items[1].Summary != "fallback" {
-		t.Fatalf("expected fallback item, got %#v", items[1])
-	}
+	// assert
+	require.Len(t, items, 2)
+	assert.Equal(t, "match", items[0].Outcome)
+	assert.Len(t, items[0].Evidence, 1)
+	assert.Equal(t, "review", items[1].Outcome)
+	assert.Equal(t, "fallback", items[1].Summary)
 }
 
 func TestHandleCreateCheckError_MapsExpectedStatuses(t *testing.T) {
+	// arrange
 	tests := []struct {
 		name string
 		err  error
@@ -144,38 +148,37 @@ func TestHandleCreateCheckError_MapsExpectedStatuses(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			// arrange
 			rec := httptest.NewRecorder()
 
+			// act
 			handleCreateCheckError(rec, tc.err)
 
-			if rec.Code != tc.code {
-				t.Fatalf("expected status %d, got %d", tc.code, rec.Code)
-			}
+			// assert
+			assert.Equal(t, tc.code, rec.Code)
 			body := decodeJSONBody(t, rec)
-			if body.Error.Code != tc.key {
-				t.Fatalf("expected error code %q, got %q", tc.key, body.Error.Code)
-			}
+			assert.Equal(t, tc.key, body.Error.Code)
 		})
 	}
 }
 
 func TestCreateLLMReviewCheck_ReturnsBadRequestForShortInstructions(t *testing.T) {
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 
+	// act
 	rec := performJSONRequest(t, http.MethodPost, "/api/v1/checks/llm-review", map[string]any{
 		"instructions": "abc",
 	}, api.CreateLLMReviewCheck)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
-	}
+	// assert
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	body := decodeJSONBody(t, rec)
-	if body.Error.Code != "invalid_argument" {
-		t.Fatalf("expected invalid_argument, got %q", body.Error.Code)
-	}
+	assert.Equal(t, "invalid_argument", body.Error.Code)
 }
 
 func TestGetCheck_ReturnsStatusPayloadForCompletedCheck(t *testing.T) {
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 	checkID := "00000000-0000-4000-8000-000000000141"
 	finishedAt := time.Now().UTC()
@@ -192,83 +195,82 @@ func TestGetCheck_ReturnsStatusPayloadForCompletedCheck(t *testing.T) {
 	req.SetPathValue("check_id", checkID)
 	rec := httptest.NewRecorder()
 
+	// act
 	api.GetCheck(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
+	// assert
+	assert.Equal(t, http.StatusOK, rec.Code)
 	var body checkRunResponse
 	decodeJSONBodyInto(t, rec, &body)
-	if body.CheckID != checkID || body.Status != checkStatusCompleted || body.FinishedAt == nil {
-		t.Fatalf("unexpected response: %#v", body)
-	}
+	assert.Equal(t, checkID, body.CheckID)
+	assert.Equal(t, checkStatusCompleted, body.Status)
+	assert.NotNil(t, body.FinishedAt)
 }
 
 func TestDeleteChecks_ReturnsBadRequestForEmptyList(t *testing.T) {
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 
+	// act
 	rec := performJSONRequest(t, http.MethodDelete, "/api/v1/checks", map[string]any{
 		"check_ids": []string{},
 	}, api.DeleteChecks)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
-	}
+	// assert
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	body := decodeJSONBody(t, rec)
-	if body.Error.Code != "invalid_argument" {
-		t.Fatalf("expected invalid_argument, got %q", body.Error.Code)
-	}
+	assert.Equal(t, "invalid_argument", body.Error.Code)
 }
 
 func TestSearchContracts_ReturnsEmptyWhenNoDocumentsResolved(t *testing.T) {
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 	useInMemoryReaders(api)
 
+	// act
 	rec := performJSONRequest(t, http.MethodPost, "/api/v1/contracts/search", map[string]any{
 		"query_text": "payment terms",
 	}, api.SearchContracts)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
+	// assert
+	assert.Equal(t, http.StatusOK, rec.Code)
 	var body contractSearchResponse
 	decodeJSONBodyInto(t, rec, &body)
-	if len(body.Items) != 0 {
-		t.Fatalf("expected empty items, got %#v", body.Items)
-	}
+	assert.Empty(t, body.Items)
 }
 
 func TestContractChatDocuments_ReturnsExpectedValidationErrors(t *testing.T) {
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 
-	if _, err := api.contractChatDocuments("contract-1"); !errors.Is(err, db.ErrNotConfigured) {
-		t.Fatalf("expected db err, got %v", err)
-	}
+	// act
+	_, err := api.contractChatDocuments("contract-1")
+
+	// assert
+	assert.ErrorIs(t, err, db.ErrNotConfigured)
 
 	useInMemoryReaders(api)
 
-	if _, err := api.contractChatDocuments("missing"); err == nil || err.Error() != "contract not found" {
-		t.Fatalf("expected contract not found, got %v", err)
-	}
+	_, err = api.contractChatDocuments("missing")
+	require.EqualError(t, err, "contract not found")
 
 	contractID := "00000000-0000-4000-8000-000000000101"
 	now := time.Now().UTC()
 	api.contracts[contractID] = contract{ID: contractID, FileIDs: nil, CreatedAt: now, UpdatedAt: now}
 
-	if _, err := api.contractChatDocuments(contractID); err == nil || err.Error() != "no contract files" {
-		t.Fatalf("expected no contract files, got %v", err)
-	}
+	_, err = api.contractChatDocuments(contractID)
+	require.EqualError(t, err, "no contract files")
 
 	documentID := "00000000-0000-4000-8000-000000000102"
 	api.contracts[contractID] = contract{ID: contractID, FileIDs: []string{documentID}, CreatedAt: now, UpdatedAt: now}
 	api.documents[documentID] = document{ID: documentID, Filename: "empty.pdf", ExtractedText: "   "}
 
-	if _, err := api.contractChatDocuments(contractID); err == nil || err.Error() != "no extracted text" {
-		t.Fatalf("expected no extracted text, got %v", err)
-	}
+	_, err = api.contractChatDocuments(contractID)
+	require.EqualError(t, err, "no extracted text")
 }
 
 func TestContractChatDocuments_TrimsAndFiltersDocuments(t *testing.T) {
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 	useInMemoryReaders(api)
 
@@ -286,19 +288,17 @@ func TestContractChatDocuments_TrimsAndFiltersDocuments(t *testing.T) {
 	api.documents[firstDocumentID] = document{ID: firstDocumentID, Filename: "alpha.pdf", ExtractedText: "  Alpha text  "}
 	api.documents[secondDocumentID] = document{ID: secondDocumentID, Filename: "blank.pdf", ExtractedText: ""}
 
+	// act
 	documents, err := api.contractChatDocuments(contractID)
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if len(documents) != 1 {
-		t.Fatalf("expected 1 document, got %d", len(documents))
-	}
-	if documents[0].Text != "Alpha text" {
-		t.Fatalf("expected trimmed text, got %q", documents[0].Text)
-	}
+	require.NoError(t, err)
+
+	// assert
+	require.Len(t, documents, 1)
+	assert.Equal(t, "Alpha text", documents[0].Text)
 }
 
 func TestChatContract_ReturnsBadGatewayWhenAIClientFails(t *testing.T) {
+	// arrange
 	aiClient := &capturingAIClient{chatErr: errors.New("upstream down")}
 	api := NewAPI(noopLogger{}, aiClient, nil, nil)
 	useInMemoryReaders(api)
@@ -309,6 +309,7 @@ func TestChatContract_ReturnsBadGatewayWhenAIClientFails(t *testing.T) {
 	api.contracts[contractID] = contract{ID: contractID, FileIDs: []string{documentID}, CreatedAt: now, UpdatedAt: now}
 	api.documents[documentID] = document{ID: documentID, Filename: "alpha.pdf", ExtractedText: "Some text"}
 
+	// act
 	rec := performJSONRequest(t, http.MethodPost, "/api/v1/contracts/"+contractID+"/chat", map[string]any{
 		"messages": []map[string]any{{"role": "user", "content": "Question?"}},
 	}, func(w http.ResponseWriter, r *http.Request) {
@@ -316,16 +317,14 @@ func TestChatContract_ReturnsBadGatewayWhenAIClientFails(t *testing.T) {
 		api.ChatContract(w, r)
 	})
 
-	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502, got %d", rec.Code)
-	}
+	// assert
+	assert.Equal(t, http.StatusBadGateway, rec.Code)
 	body := decodeJSONBody(t, rec)
-	if body.Error.Code != "contract_chat_unavailable" {
-		t.Fatalf("expected contract_chat_unavailable, got %q", body.Error.Code)
-	}
+	assert.Equal(t, "contract_chat_unavailable", body.Error.Code)
 }
 
 func TestChatContract_ValidatesMessages(t *testing.T) {
+	// arrange
 	api := NewAPI(noopLogger{}, nil, nil, nil)
 
 	tests := []struct {
@@ -339,23 +338,22 @@ func TestChatContract_ValidatesMessages(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			// act
 			rec := performJSONRequest(t, http.MethodPost, "/api/v1/contracts/not-a-uuid/chat", tc.payload, func(w http.ResponseWriter, r *http.Request) {
 				r.SetPathValue("contract_id", "00000000-0000-4000-8000-000000000151")
 				api.ChatContract(w, r)
 			})
 
-			if rec.Code != http.StatusBadRequest {
-				t.Fatalf("expected 400, got %d", rec.Code)
-			}
+			// assert
+			assert.Equal(t, http.StatusBadRequest, rec.Code)
 			body := decodeJSONBody(t, rec)
-			if body.Error.Code != "invalid_argument" {
-				t.Fatalf("expected invalid_argument, got %q", body.Error.Code)
-			}
+			assert.Equal(t, "invalid_argument", body.Error.Code)
 		})
 	}
 }
 
 func TestChatContract_FiltersBlankCitationsAndTrimsAnswer(t *testing.T) {
+	// arrange
 	aiClient := &capturingAIClient{}
 	api := NewAPI(noopLogger{}, aiClient, nil, nil)
 	useInMemoryReaders(api)
@@ -383,20 +381,17 @@ func TestChatContract_FiltersBlankCitationsAndTrimsAnswer(t *testing.T) {
 	api.ai = contractChatFilteringStub{}
 	defer func() { api.ai = original }()
 
+	// act
 	api.ChatContract(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
+	// assert
+	assert.Equal(t, http.StatusOK, rec.Code)
 
 	var body contractChatResponse
 	decodeJSONBodyInto(t, rec, &body)
-	if body.Answer != "Trim me" {
-		t.Fatalf("expected trimmed answer, got %q", body.Answer)
-	}
-	if len(body.Citations) != 1 || body.Citations[0].DocumentID != documentID {
-		t.Fatalf("unexpected citations: %#v", body.Citations)
-	}
+	assert.Equal(t, "Trim me", body.Answer)
+	require.Len(t, body.Citations, 1)
+	assert.Equal(t, documentID, body.Citations[0].DocumentID)
 }
 
 type contractChatFilteringStub struct{}

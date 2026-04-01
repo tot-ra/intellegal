@@ -2,30 +2,33 @@
 
 package storage
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestNewAdapter_PropagatesValidationErrors(t *testing.T) {
+	// arrange
+
+	// act
 	_, err := NewAdapter(FactoryConfig{
 		MinIOAccessKey: "minioadmin",
 		MinIOSecretKey: "minioadmin",
 		MinIOBucket:    "contracts",
 	})
-	if err == nil {
-		t.Fatal("expected validation error")
-	}
-	if err.Error() != "minio endpoint is empty" {
-		t.Fatalf("unexpected error: %q", err.Error())
-	}
+
+	// assert
+	require.EqualError(t, err, "minio endpoint is empty")
 }
 
 func TestMinIOAdapterHealthCheck_ReturnsErrorWhenUninitialized(t *testing.T) {
+	// arrange
 	var adapter *MinIOAdapter
 
+	// act
 	err := adapter.HealthCheck(nil)
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if err.Error() != "minio is not initialized" {
-		t.Fatalf("unexpected error: %q", err.Error())
-	}
+
+	// assert
+	require.EqualError(t, err, "minio is not initialized")
 }

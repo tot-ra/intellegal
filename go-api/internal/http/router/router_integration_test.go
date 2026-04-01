@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	logger "github.com/Gratheon/log-lib-go"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"legal-doc-intel/go-api/internal/ai"
 	"legal-doc-intel/go-api/internal/http/handlers"
@@ -38,7 +40,7 @@ func (mockAIClient) SearchSections(_ context.Context, _ ai.SearchSectionsRequest
 }
 
 func TestHealthEndpoint_ReturnsOKAndRequestID(t *testing.T) {
-	// Arrange
+	// arrange
 	log := logging.NewDiscard(logger.New(logger.LoggerConfig{}))
 	api := handlers.NewAPI(log, mockAIClient{}, nil, nil)
 	handler := New(log, api, nil, []string{"http://localhost:3000"})
@@ -46,32 +48,22 @@ func TestHealthEndpoint_ReturnsOKAndRequestID(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
 	w := httptest.NewRecorder()
 
-	// Act
+	// act
 	handler.ServeHTTP(w, req)
 
-	// Assert
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
+	// assert
+	require.Equal(t, http.StatusOK, w.Code)
 
 	var body map[string]any
-	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-		t.Fatalf("unmarshal health response: %v", err)
-	}
-	if body["status"] != "ok" {
-		t.Fatalf("expected status ok, got %#v", body["status"])
-	}
-	if _, ok := body["timestamp"].(string); !ok {
-		t.Fatalf("expected timestamp string, got %#v", body["timestamp"])
-	}
-
-	if got := w.Header().Get("X-Request-ID"); got == "" {
-		t.Fatal("expected X-Request-ID header to be set")
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	assert.Equal(t, "ok", body["status"])
+	_, ok := body["timestamp"].(string)
+	assert.True(t, ok)
+	assert.NotEmpty(t, w.Header().Get("X-Request-ID"))
 }
 
 func TestReadinessEndpoint_ReturnsOKWhenDependencyCheckSucceeds(t *testing.T) {
-	// Arrange
+	// arrange
 	log := logging.NewDiscard(logger.New(logger.LoggerConfig{}))
 	api := handlers.NewAPI(log, mockAIClient{}, nil, nil)
 	handler := New(log, api, []handlers.DependencyProbe{
@@ -81,31 +73,23 @@ func TestReadinessEndpoint_ReturnsOKWhenDependencyCheckSucceeds(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/readiness", nil)
 	w := httptest.NewRecorder()
 
-	// Act
+	// act
 	handler.ServeHTTP(w, req)
 
-	// Assert
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
+	// assert
+	require.Equal(t, http.StatusOK, w.Code)
 
 	var body struct {
 		Status       string                       `json:"status"`
 		Dependencies map[string]map[string]string `json:"dependencies"`
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-		t.Fatalf("unmarshal readiness response: %v", err)
-	}
-	if body.Status != "ready" {
-		t.Fatalf("expected ready status, got %q", body.Status)
-	}
-	if body.Dependencies["postgres"]["status"] != "up" {
-		t.Fatalf("expected postgres dependency up, got %#v", body.Dependencies["postgres"])
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	assert.Equal(t, "ready", body.Status)
+	assert.Equal(t, "up", body.Dependencies["postgres"]["status"])
 }
 
 func TestReadinessEndpoint_ReturnsServiceUnavailableWhenDependencyCheckFails(t *testing.T) {
-	// Arrange
+	// arrange
 	log := logging.NewDiscard(logger.New(logger.LoggerConfig{}))
 	api := handlers.NewAPI(log, mockAIClient{}, nil, nil)
 	handler := New(
@@ -120,25 +104,17 @@ func TestReadinessEndpoint_ReturnsServiceUnavailableWhenDependencyCheckFails(t *
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/readiness", nil)
 	w := httptest.NewRecorder()
 
-	// Act
+	// act
 	handler.ServeHTTP(w, req)
 
-	// Assert
-	if w.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503, got %d", w.Code)
-	}
+	// assert
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
 
 	var body struct {
 		Status       string                       `json:"status"`
 		Dependencies map[string]map[string]string `json:"dependencies"`
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-		t.Fatalf("unmarshal readiness response: %v", err)
-	}
-	if body.Status != "not_ready" {
-		t.Fatalf("expected not_ready status, got %q", body.Status)
-	}
-	if body.Dependencies["postgres"]["status"] != "down" {
-		t.Fatalf("expected postgres dependency down, got %#v", body.Dependencies["postgres"])
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	assert.Equal(t, "not_ready", body.Status)
+	assert.Equal(t, "down", body.Dependencies["postgres"]["status"])
 }

@@ -2,18 +2,24 @@
 
 package ids
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestIsUUID_AcceptsCanonicalUUIDsCaseInsensitively(t *testing.T) {
-	if !IsUUID("550e8400-e29b-41d4-a716-446655440000") {
-		t.Fatal("expected lowercase UUID to be accepted")
-	}
-	if !IsUUID("550E8400-E29B-41D4-A716-446655440000") {
-		t.Fatal("expected uppercase UUID to be accepted")
-	}
+	// arrange
+
+	// act
+
+	// assert
+	assert.True(t, IsUUID("550e8400-e29b-41d4-a716-446655440000"))
+	assert.True(t, IsUUID("550E8400-E29B-41D4-A716-446655440000"))
 }
 
 func TestIsUUID_RejectsMalformedValues(t *testing.T) {
+	// arrange
 	cases := []string{
 		"",
 		"not-a-uuid",
@@ -22,24 +28,25 @@ func TestIsUUID_RejectsMalformedValues(t *testing.T) {
 		"550e8400-e29b-41d4-6716-446655440000",
 	}
 
+	// act
 	for _, tc := range cases {
-		if IsUUID(tc) {
-			t.Fatalf("expected %q to be rejected", tc)
-		}
+		// assert
+		assert.False(t, IsUUID(tc), tc)
 	}
 }
 
 func TestNewUUID_ReturnsValidVersion4UUID(t *testing.T) {
+	// arrange
+
+	// act
 	value := NewUUID()
-	if !IsUUID(value) {
-		t.Fatalf("expected generated UUID to be valid, got %q", value)
-	}
-	if value[14] != '4' {
-		t.Fatalf("expected version 4 UUID, got %q", value)
-	}
+
+	// assert
+	assert.True(t, IsUUID(value))
+	assert.Equal(t, byte('4'), value[14])
 	switch value[19] {
 	case '8', '9', 'a', 'b':
 	default:
-		t.Fatalf("expected RFC 4122 variant, got %q", value)
+		assert.Failf(t, "expected RFC 4122 variant", "got %q", value)
 	}
 }
