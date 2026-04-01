@@ -224,7 +224,7 @@ export function ContractEditPage() {
   const { contractId } = useParams<{ contractId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const [contract, setContract] = useState<ContractResponse | null>(null);
-  const [unsafeFiles, setFiles] = useState<DocumentResponse[] | undefined>([]);
+  const [files, setFiles] = useState<DocumentResponse[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [savingOrder, setSavingOrder] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -269,7 +269,6 @@ export function ContractEditPage() {
   const creationNotice = searchParams.get("notice")?.trim() ?? "";
   const chatBodyRef = useRef<HTMLDivElement | null>(null);
   const activeAutoGuidelineRunKeysRef = useRef(new Set<string>());
-  const files = Array.isArray(unsafeFiles) ? unsafeFiles : [];
   const singleDocxFile =
     files.length === 1 &&
     files[0]?.mime_type ===

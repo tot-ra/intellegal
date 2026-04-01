@@ -84,9 +84,15 @@ def test_extract_returns_completed_job_with_result(monkeypatch) -> None:
     client = _client_with_env(monkeypatch, token="shared-secret")
 
     class _FakePipeline:
-        def extract_from_uri(self, storage_uri: str, mime_type: str | None = None) -> ExtractionResult:
+        def extract_from_uri(
+            self,
+            storage_uri: str,
+            mime_type: str | None = None,
+            language: str | None = None,
+        ) -> ExtractionResult:
             assert storage_uri == "/tmp/document.pdf"
             assert mime_type == "application/pdf"
+            assert language is None
             return ExtractionResult(
                 mime_type="application/pdf",
                 text="Page one\n\f\nPage two",
