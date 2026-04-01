@@ -4,7 +4,7 @@ from typing import Any
 
 from qdrant_client import QdrantClient, models
 
-from .config import Settings
+from ..config import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -171,7 +171,6 @@ class QdrantService:
         raw_results: list[Any]
         if hasattr(self._client, "query_points"):
             try:
-                # qdrant-client >=1.17 exposes vector search via query_points().
                 response = self._client.query_points(
                     collection_name=self.collection_name,
                     query=query_vector,
@@ -181,7 +180,6 @@ class QdrantService:
                 )
                 raw_results = list(getattr(response, "points", []) or [])
             except AttributeError:
-                # Some custom wrappers may define query_points but not implement it.
                 raw_results = self._client.search(
                     collection_name=self.collection_name,
                     query_vector=query_vector,
@@ -190,7 +188,6 @@ class QdrantService:
                     with_vectors=False,
                 )
         else:
-            # Backward compatibility with older qdrant-client versions.
             raw_results = self._client.search(
                 collection_name=self.collection_name,
                 query_vector=query_vector,

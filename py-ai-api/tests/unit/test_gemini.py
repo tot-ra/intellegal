@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from py_ai_api.gemini import GeminiReviewer
+from py_ai_api.services.gemini import GeminiReviewer
 
 pytestmark = pytest.mark.unit
 

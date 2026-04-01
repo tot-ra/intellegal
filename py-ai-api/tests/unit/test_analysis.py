@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from py_ai_api.analysis import AnalysisPipeline
-from py_ai_api.gemini import GeminiContractChatCitation, GeminiContractChatResult, GeminiReviewResult
+from py_ai_api.services.analysis import AnalysisPipeline
+from py_ai_api.services.gemini import GeminiContractChatCitation, GeminiContractChatResult, GeminiReviewResult
 
 pytestmark = pytest.mark.unit
 

@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
 
-from .config import Settings, get_settings
+from ..config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -25,4 +25,3 @@ def require_internal_service_auth(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unauthorized",
         )
-

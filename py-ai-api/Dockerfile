@@ -17,8 +17,8 @@ RUN apt-get update \
 
 EXPOSE 8000
 
-CMD ["uvicorn", "py_ai_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "py_ai_api.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
 
 FROM base AS dev
 
-CMD ["uvicorn", "py_ai_api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/py_ai_api"]
+CMD ["uvicorn", "py_ai_api.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/py_ai_api"]

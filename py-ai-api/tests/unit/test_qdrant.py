@@ -1,7 +1,7 @@
 import pytest
 
 from py_ai_api.config import Settings
-from py_ai_api.qdrant import QdrantService, build_collection_schema
+from py_ai_api.storage.qdrant import QdrantService, build_collection_schema
 
 pytestmark = pytest.mark.unit
 

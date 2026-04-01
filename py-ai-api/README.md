@@ -6,7 +6,7 @@
 python3.14 -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
-uvicorn py_ai_api.main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn py_ai_api.api.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Auth-protected internal endpoints require `X-Internal-Service-Token` and the

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException, status
 
-from py_ai_api.auth import require_internal_service_auth
+from py_ai_api.api.auth import require_internal_service_auth
 from py_ai_api.config import Settings
 
 pytestmark = pytest.mark.unit

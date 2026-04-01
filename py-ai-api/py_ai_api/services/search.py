@@ -3,24 +3,10 @@ from __future__ import annotations
 import shlex
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
-
-from .db import ChunkSearchStore
+from ..models.search import SearchSectionsResult, SearchSectionsResultItem
+from ..storage.postgres import ChunkSearchStore
+from ..storage.qdrant import QdrantService
 from .indexing import HashEmbeddingGenerator
-from .qdrant import QdrantService
-
-
-class SearchSectionsResultItem(BaseModel):
-    document_id: str
-    page_number: int
-    chunk_id: str | None = None
-    score: float
-    snippet_text: str
-
-
-class SearchSectionsResult(BaseModel):
-    items: list[SearchSectionsResultItem] = Field(default_factory=list)
-    diagnostics: dict[str, Any] = Field(default_factory=dict)
 
 
 def _parse_query_text(query_text: str) -> tuple[str, list[str]]:
