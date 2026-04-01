@@ -57,18 +57,9 @@ class GeminiReviewer:
             document_text=document_text,
         )
         payload = {
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": [{"text": prompt}],
-                }
-            ],
-            "generationConfig": {
-                "temperature": 0.1,
-                "responseMimeType": "application/json",
-            },
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
         }
-
         endpoint = (
             "https://generativelanguage.googleapis.com/v1beta/models/"
             f"{parse.quote(self._model, safe='')}:generateContent?key={parse.quote(self._api_key, safe='')}"
@@ -131,18 +122,9 @@ class GeminiReviewer:
             documents=documents,
         )
         payload = {
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": [{"text": prompt}],
-                }
-            ],
-            "generationConfig": {
-                "temperature": 0.15,
-                "responseMimeType": "application/json",
-            },
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.15, "responseMimeType": "application/json"},
         }
-
         endpoint = (
             "https://generativelanguage.googleapis.com/v1beta/models/"
             f"{parse.quote(self._model, safe='')}:generateContent?key={parse.quote(self._api_key, safe='')}"
@@ -258,19 +240,14 @@ def _build_contract_chat_prompt(
         if str(document.get("document_id") or "").strip() and str(document.get("text") or "").strip()
     )
     return (
-        "You are a contract Q&A assistant.\n"
-        "Answer the user's latest question using only the provided contract text and prior chat context.\n"
+        "You answer questions about a contract using only the provided document text.\n"
         "Return only valid JSON with this exact shape:\n"
         '{"answer":"...","citations":[{"document_id":"...","snippet_text":"...","reason":"..."}]}\n'
         "Rules:\n"
-        "- answer should be concise, direct, and legally cautious.\n"
-        "- If the text is ambiguous or incomplete, say that clearly in answer.\n"
-        "- citations may contain up to 4 items.\n"
-        "- Every citation.document_id must exactly match one of the provided document IDs.\n"
-        "- Every citation.snippet_text must be an exact continuous quote copied from the provided text.\n"
-        "- Keep citation snippets short but sufficient for highlighting.\n"
-        "- Do not invent clause numbers, page numbers, or facts not present in the documents.\n\n"
-        f"CONTRACT_ID: {contract_id.strip() or 'unknown'}\n\n"
-        f"CHAT HISTORY:\n{rendered_messages}\n\n"
-        f"CONTRACT DOCUMENTS:\n{rendered_documents}"
+        "- Keep the answer concise and grounded in the provided text.\n"
+        "- If the answer is unclear, say so plainly.\n"
+        "- citations must contain up to 4 supporting snippets copied verbatim from the documents.\n\n"
+        f"CONTRACT_ID: {contract_id}\n\n"
+        f"MESSAGES:\n{rendered_messages}\n\n"
+        f"DOCUMENTS:\n{rendered_documents}"
     )

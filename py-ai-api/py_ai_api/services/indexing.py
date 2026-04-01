@@ -2,36 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from dataclasses import dataclass
 from time import monotonic
 from typing import Any
 
-from pydantic import BaseModel, Field
-
-from .db import ChunkSearchStore
+from ..models.indexing import Chunk, IndexPageInput, IndexingResult
+from ..storage.postgres import ChunkSearchStore
+from ..storage.qdrant import QdrantService
 from .extraction import ExtractionError, _clamp_confidence
-from .qdrant import QdrantService
-
-
-class IndexPageInput(BaseModel):
-    page_number: int
-    text: str
-
-
-class IndexingResult(BaseModel):
-    document_id: str
-    checksum: str
-    chunk_count: int
-    indexed: bool
-    skipped_reason: str | None = None
-    diagnostics: dict[str, Any] = Field(default_factory=dict)
-
-
-@dataclass
-class Chunk:
-    chunk_id: int
-    page_number: int
-    text: str
 
 
 class HashEmbeddingGenerator:

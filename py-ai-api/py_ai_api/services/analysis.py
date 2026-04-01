@@ -3,42 +3,16 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from pydantic import BaseModel, Field
-
-from .extraction import _clamp_confidence
+from ..models.analysis import (
+    AnalysisEvidenceSnippet,
+    AnalysisResult,
+    AnalysisResultItem,
+    ContractChatCitation,
+    ContractChatResult,
+)
+from ..storage.qdrant import QdrantService
+from ..utils.confidence import clamp_confidence
 from .gemini import GeminiContractChatResult, GeminiReviewResult, GeminiReviewer
-from .qdrant import QdrantService
-
-
-class AnalysisEvidenceSnippet(BaseModel):
-    snippet_text: str
-    page_number: int
-    chunk_id: str | None = None
-    score: float | None = None
-
-
-class AnalysisResultItem(BaseModel):
-    document_id: str
-    outcome: str
-    confidence: float
-    summary: str | None = None
-    evidence: list[AnalysisEvidenceSnippet] = Field(default_factory=list)
-
-
-class AnalysisResult(BaseModel):
-    items: list[AnalysisResultItem]
-    diagnostics: dict[str, Any] = Field(default_factory=dict)
-
-
-class ContractChatCitation(BaseModel):
-    document_id: str
-    snippet_text: str
-    reason: str | None = None
-
-
-class ContractChatResult(BaseModel):
-    answer: str
-    citations: list[ContractChatCitation] = Field(default_factory=list)
 
 
 class AnalysisPipeline:
@@ -85,7 +59,7 @@ class AnalysisPipeline:
                     AnalysisResultItem(
                         document_id=document_id,
                         outcome="match",
-                        confidence=_clamp_confidence(0.72 + (best_score * 0.2)),
+                        confidence=clamp_confidence(0.72 + (best_score * 0.2)),
                         summary="Required clause appears to be present in the document.",
                         evidence=evidence,
                     )
@@ -95,7 +69,7 @@ class AnalysisPipeline:
                     AnalysisResultItem(
                         document_id=document_id,
                         outcome="review",
-                        confidence=_clamp_confidence(0.45 + (best_score * 0.2)),
+                        confidence=clamp_confidence(0.45 + (best_score * 0.2)),
                         summary="Possible clause match found, but confidence is not high enough for an automatic decision.",
                         evidence=evidence,
                     )
@@ -152,7 +126,7 @@ class AnalysisPipeline:
                 AnalysisResultItem(
                     document_id=document_id,
                     outcome=review.outcome,
-                    confidence=_clamp_confidence(review.confidence),
+                    confidence=clamp_confidence(review.confidence),
                     summary=review.summary,
                     evidence=evidence,
                 )
@@ -221,7 +195,7 @@ def _build_evidence(chunk: dict[str, Any] | None, score: float) -> list[Analysis
             snippet_text=snippet,
             page_number=page_number if page_number > 0 else 1,
             chunk_id=str(chunk_id) if chunk_id is not None else None,
-            score=round(_clamp_confidence(score), 3),
+            score=round(clamp_confidence(score), 3),
         )
     ]
 

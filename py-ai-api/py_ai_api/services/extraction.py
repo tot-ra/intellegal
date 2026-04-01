@@ -5,7 +5,6 @@ import mimetypes
 import os
 import re
 import unicodedata
-from dataclasses import dataclass
 from io import BytesIO
 from time import monotonic
 from typing import Any, Protocol
@@ -13,7 +12,8 @@ from urllib import error as urlerror
 from urllib import request as urlrequest
 from urllib.parse import unquote, urlparse
 
-from pydantic import BaseModel, Field
+from ..models.extraction import ExtractionResult, OCRText, PageExtraction
+from ..utils.confidence import clamp_confidence
 
 DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 SUPPORTED_MIME_TYPES = {"application/pdf", "image/jpeg", "image/png", DOCX_MIME_TYPE}
@@ -36,22 +36,6 @@ class ExtractionError(Exception):
         self.details = details or {}
 
 
-class PageExtraction(BaseModel):
-    page_number: int
-    text: str
-    char_count: int
-    confidence: float
-    source: str
-
-
-class ExtractionResult(BaseModel):
-    mime_type: str
-    text: str
-    pages: list[PageExtraction]
-    confidence: float
-    diagnostics: dict[str, Any] = Field(default_factory=dict)
-
-
 class PDFExtractor(Protocol):
     def extract_pages(self, payload: bytes) -> list[str]:
         ...
@@ -60,13 +44,6 @@ class PDFExtractor(Protocol):
 class DOCXExtractor(Protocol):
     def extract_text(self, payload: bytes) -> str:
         ...
-
-
-@dataclass
-class OCRText:
-    text: str
-    confidence: float | None
-    diagnostics: dict[str, Any]
 
 
 class OCRExtractor(Protocol):
@@ -78,7 +55,7 @@ class PypdfExtractor:
     def extract_pages(self, payload: bytes) -> list[str]:
         try:
             from pypdf import PdfReader
-        except ImportError as exc:  # pragma: no cover - depends on runtime env
+        except ImportError as exc:  # pragma: no cover
             raise ExtractionError(
                 "PDF extraction dependency is missing",
                 code="dependency_unavailable",
@@ -90,7 +67,7 @@ class PypdfExtractor:
         try:
             reader = PdfReader(BytesIO(payload))
             return [(page.extract_text() or "") for page in reader.pages]
-        except Exception as exc:  # pragma: no cover - library/runtime errors
+        except Exception as exc:  # pragma: no cover
             raise ExtractionError(
                 "could not parse PDF input",
                 code="invalid_argument",
@@ -105,7 +82,7 @@ class TesseractOCRExtractor:
         try:
             import pytesseract
             from PIL import Image
-        except ImportError as exc:  # pragma: no cover - depends on runtime env
+        except ImportError as exc:  # pragma: no cover
             raise ExtractionError(
                 "OCR dependencies are missing",
                 code="dependency_unavailable",
@@ -118,7 +95,7 @@ class TesseractOCRExtractor:
             image = Image.open(BytesIO(payload))
             text = pytesseract.image_to_string(image)
             data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
-        except Exception as exc:  # pragma: no cover - binary/runtime errors
+        except Exception as exc:  # pragma: no cover
             raise ExtractionError(
                 "OCR processing failed",
                 code="dependency_unavailable",
@@ -148,7 +125,7 @@ class PythonDocxExtractor:
     def extract_text(self, payload: bytes) -> str:
         try:
             from docx import Document
-        except ImportError as exc:  # pragma: no cover - depends on runtime env
+        except ImportError as exc:  # pragma: no cover
             raise ExtractionError(
                 "DOCX extraction dependency is missing",
                 code="dependency_unavailable",
@@ -159,7 +136,7 @@ class PythonDocxExtractor:
 
         try:
             document = Document(BytesIO(payload))
-        except Exception as exc:  # pragma: no cover - library/runtime errors
+        except Exception as exc:  # pragma: no cover
             raise ExtractionError(
                 "could not parse DOCX input",
                 code="invalid_argument",
@@ -218,7 +195,7 @@ class ExtractionPipeline:
             raw_pages = [ocr_text.text]
             ocr_diag = dict(ocr_text.diagnostics)
             if ocr_text.confidence is not None:
-                confidences = [_clamp_confidence(ocr_text.confidence)]
+                confidences = [clamp_confidence(ocr_text.confidence)]
         else:
             raise ExtractionError(
                 f"unsupported mime_type: {mime_type}",
@@ -375,4 +352,4 @@ def _heuristic_confidence(text: str) -> float:
 
 
 def _clamp_confidence(value: float) -> float:
-    return max(0.0, min(1.0, value))
+    return clamp_confidence(value)

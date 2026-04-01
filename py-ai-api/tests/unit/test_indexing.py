@@ -4,7 +4,8 @@ import uuid
 
 import pytest
 
-from py_ai_api.indexing import IndexPageInput, IndexingPipeline
+from py_ai_api.models.indexing import IndexPageInput
+from py_ai_api.services.indexing import IndexingPipeline
 
 pytestmark = pytest.mark.unit
 

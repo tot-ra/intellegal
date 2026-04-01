@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from py_ai_api.search import SearchPipeline, _parse_query_text
+from py_ai_api.services.search import SearchPipeline, _parse_query_text
 
 pytestmark = pytest.mark.unit
 

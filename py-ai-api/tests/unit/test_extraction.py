@@ -6,7 +6,8 @@ from urllib import error as urlerror
 
 import pytest
 
-from py_ai_api.extraction import ExtractionError, ExtractionPipeline, OCRText, _load_document_bytes
+from py_ai_api.models.extraction import OCRText
+from py_ai_api.services.extraction import ExtractionError, ExtractionPipeline, _load_document_bytes
 
 pytestmark = pytest.mark.unit
 

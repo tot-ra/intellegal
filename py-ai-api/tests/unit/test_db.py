@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from py_ai_api import db
+from py_ai_api.storage import postgres as db
 
 pytestmark = pytest.mark.unit
 
