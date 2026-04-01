@@ -185,6 +185,22 @@ function formatMimeTypeLabel(mimeType: string): string {
   }
 }
 
+function buildContractGuidelineRunGroupKey(run: StoredCheckRun): string {
+  const documentKey = [...(run.document_ids ?? [])].sort().join(",");
+
+  if (!run.rule_id && !run.rule_name && !run.rule_text) {
+    return `${run.check_id}::${documentKey}`;
+  }
+
+  return [
+    run.rule_id?.trim().toLowerCase() ?? "",
+    run.rule_type ?? run.check_type,
+    run.rule_name?.trim().toLowerCase() ?? "",
+    run.rule_text?.trim().toLowerCase() ?? "",
+    documentKey,
+  ].join("::");
+}
+
 function triggerDocumentDownload(file: DocumentResponse) {
   const downloadLink = document.createElement("a");
   downloadLink.href = apiClient.getDocumentContentUrl(file.id);
@@ -252,6 +268,7 @@ export function ContractEditPage() {
   const [activeCitationId, setActiveCitationId] = useState<string | null>(null);
   const creationNotice = searchParams.get("notice")?.trim() ?? "";
   const chatBodyRef = useRef<HTMLDivElement | null>(null);
+  const activeAutoGuidelineRunKeysRef = useRef(new Set<string>());
   const singleDocxFile =
     files.length === 1 &&
     files[0]?.mime_type ===
@@ -430,13 +447,34 @@ export function ContractEditPage() {
     setGuidelineRuns(relevantRuns);
   }, [contractDocumentIds, contract?.updated_at, files.length]);
 
+  const visibleGuidelineRunGroups = useMemo(() => {
+    const groups = new Map<
+      string,
+      { primaryRun: StoredCheckRun; runs: StoredCheckRun[] }
+    >();
+
+    for (const run of guidelineRuns) {
+      const groupKey = buildContractGuidelineRunGroupKey(run);
+      const existing = groups.get(groupKey);
+      if (existing) {
+        existing.runs.push(run);
+        continue;
+      }
+      groups.set(groupKey, { primaryRun: run, runs: [run] });
+    }
+
+    return [...groups.values()];
+  }, [guidelineRuns]);
+
   useEffect(() => {
     setSelectedGuidelineRunIds((current) =>
       current.filter((checkId) =>
-        guidelineRuns.some((run) => run.check_id === checkId),
+        visibleGuidelineRunGroups.some(
+          (group) => group.primaryRun.check_id === checkId,
+        ),
       ),
     );
-  }, [guidelineRuns]);
+  }, [visibleGuidelineRunGroups]);
 
   useEffect(() => {
     let cancelled = false;
@@ -509,10 +547,15 @@ export function ContractEditPage() {
     let cancelled = false;
 
     const startPendingAutoGuidelines = async () => {
+      const queuedAutoRuns = pendingAutoRuns.filter((pending) => {
+        const runKey = `${pending.contract_id}:${pending.rule_id}`;
+        return !activeAutoGuidelineRunKeysRef.current.has(runKey);
+      });
+
       if (
         !contractId ||
         contractDocumentIds.length === 0 ||
-        pendingAutoRuns.length === 0
+        queuedAutoRuns.length === 0
       ) {
         return;
       }
@@ -528,21 +571,27 @@ export function ContractEditPage() {
       setGuidelineError(null);
 
       try {
-        for (const pending of pendingAutoRuns) {
+        for (const pending of queuedAutoRuns) {
+          const runKey = `${pending.contract_id}:${pending.rule_id}`;
+          activeAutoGuidelineRunKeysRef.current.add(runKey);
           const rule = getStoredGuidelineRule(pending.rule_id);
-          removePendingAutoGuidelineRun(pending.contract_id, pending.rule_id);
-          setPendingAutoRuns(listPendingAutoGuidelineRuns(contractId));
+          try {
+            removePendingAutoGuidelineRun(pending.contract_id, pending.rule_id);
+            setPendingAutoRuns(listPendingAutoGuidelineRuns(contractId));
 
-          if (!rule) {
-            continue;
+            if (!rule) {
+              continue;
+            }
+
+            await runGuidelineRule({
+              rule,
+              documentIds: contractDocumentIds,
+              documents: files,
+              scope: "contract",
+            });
+          } finally {
+            activeAutoGuidelineRunKeysRef.current.delete(runKey);
           }
-
-          await runGuidelineRule({
-            rule,
-            documentIds: contractDocumentIds,
-            documents: files,
-            scope: "contract",
-          });
         }
       } catch (err) {
         if (!cancelled) {
@@ -613,15 +662,17 @@ export function ContractEditPage() {
   }, [contract, contractNameInput, contractTagsInput]);
 
   const allGuidelineRunsSelected =
-    guidelineRuns.length > 0 &&
-    selectedGuidelineRunIds.length === guidelineRuns.length;
+    visibleGuidelineRunGroups.length > 0 &&
+    selectedGuidelineRunIds.length === visibleGuidelineRunGroups.length;
 
   const selectedGuidelineRuns = useMemo(
     () =>
-      guidelineRuns.filter((run) =>
-        selectedGuidelineRunIds.includes(run.check_id),
+      visibleGuidelineRunGroups.flatMap((group) =>
+        selectedGuidelineRunIds.includes(group.primaryRun.check_id)
+          ? group.runs
+          : [],
       ),
-    [guidelineRuns, selectedGuidelineRunIds],
+    [selectedGuidelineRunIds, visibleGuidelineRunGroups],
   );
 
   const refreshGuidelineRunsFromStorage = () => {
@@ -1014,7 +1065,7 @@ export function ContractEditPage() {
                 </p>
               </div>
               <div className="page-actions">
-                {guidelineRuns.length > 0 ? (
+                {visibleGuidelineRunGroups.length > 0 ? (
                   <button
                     type="button"
                     className="secondary"
@@ -1022,7 +1073,9 @@ export function ContractEditPage() {
                       setSelectedGuidelineRunIds(
                         allGuidelineRunsSelected
                           ? []
-                          : guidelineRuns.map((run) => run.check_id),
+                          : visibleGuidelineRunGroups.map(
+                              (group) => group.primaryRun.check_id,
+                            ),
                       )
                     }
                     disabled={deletingGuidelines}
@@ -1063,14 +1116,15 @@ export function ContractEditPage() {
                     : `${pendingAutoRuns.length} automatic guideline check(s) are queued.`}
               </p>
             ) : null}
-            {guidelineRuns.length === 0 && pendingAutoRuns.length === 0 ? (
+            {visibleGuidelineRunGroups.length === 0 &&
+            pendingAutoRuns.length === 0 ? (
               <p className="muted">
                 No guideline checks for this contract yet.
               </p>
             ) : null}
-            {guidelineRuns.length > 0 ? (
+            {visibleGuidelineRunGroups.length > 0 ? (
               <ul className="run-list">
-                {guidelineRuns.map((run) => {
+                {visibleGuidelineRunGroups.map(({ primaryRun: run }) => {
                   const cachedResults = getStoredResults(run.check_id);
                   const flaggedCount =
                     cachedResults?.items.filter(

@@ -104,16 +104,32 @@ export function writeLocalJson<T>(key: string, value: T) {
 
 export function listStoredRuns(): StoredCheckRun[] {
   const runs = readJson<StoredCheckRun[]>(CHECK_RUNS_KEY, []);
-  return [...runs]
-    .map((run) => ({ ...run, execution_mode: run.execution_mode ?? "remote" }))
+  const dedupedRuns = new Map<string, StoredCheckRun>();
+
+  for (const run of runs) {
+    const normalizedRun = {
+      ...dedupedRuns.get(run.check_id),
+      ...run,
+      execution_mode: run.execution_mode ?? "remote",
+    };
+    dedupedRuns.set(run.check_id, normalizedRun);
+  }
+
+  return [...dedupedRuns.values()]
     .sort((a, b) => b.requested_at.localeCompare(a.requested_at));
 }
 
 export function upsertStoredRun(run: StoredCheckRun) {
   const runs = readJson<StoredCheckRun[]>(CHECK_RUNS_KEY, []);
-  const previous = runs.find((item) => item.check_id === run.check_id);
-  const next = runs.filter((item) => item.check_id !== run.check_id);
-  next.push({ ...previous, ...run });
+  const existingIndex = runs.findIndex((item) => item.check_id === run.check_id);
+  const next = [...runs];
+
+  if (existingIndex >= 0) {
+    next[existingIndex] = { ...next[existingIndex], ...run };
+  } else {
+    next.push(run);
+  }
+
   writeJson(CHECK_RUNS_KEY, next);
 }
 

@@ -467,6 +467,64 @@ describe("router", () => {
     confirmSpy.mockRestore();
   });
 
+  it("keeps guideline check order stable when selecting a run", async () => {
+    window.localStorage.setItem(
+      "ldi.checkRuns",
+      JSON.stringify([
+        {
+          check_id: "check-1",
+          check_type: "clause_presence",
+          execution_mode: "remote",
+          status: "completed",
+          requested_at: "2026-01-02T03:04:05Z",
+          rule_name: "Payment terms"
+        },
+        {
+          check_id: "check-2",
+          check_type: "llm_review",
+          execution_mode: "remote",
+          status: "completed",
+          requested_at: "2026-01-02T03:04:05Z",
+          rule_name: "Risk review"
+        }
+      ])
+    );
+
+    vi.mocked(apiClient.getCheckRun).mockImplementationOnce(async (checkId: string) => ({
+      check_id: checkId,
+      status: "completed",
+      check_type: checkId === "check-1" ? "clause_presence" : "llm_review",
+      requested_at: "2026-01-02T03:04:05Z"
+    }));
+    vi.mocked(apiClient.getCheckResults).mockResolvedValueOnce({
+      check_id: "check-1",
+      status: "completed",
+      items: []
+    });
+
+    renderAt("/guidelines");
+
+    const getRunButtons = () => Array.from(document.querySelectorAll<HTMLButtonElement>("button.run-item"));
+    const getRunLabels = () =>
+      getRunButtons().map((button) => button.textContent?.trim() ?? "");
+
+    expect(getRunLabels()).toEqual([
+      expect.stringContaining("Payment terms"),
+      expect.stringContaining("Risk review")
+    ]);
+
+    fireEvent.click(getRunButtons()[0]);
+
+    await waitFor(() => {
+      expect(apiClient.getCheckRun).toHaveBeenCalledWith("check-1");
+    });
+
+    expect(getRunLabels()).toEqual([
+      expect.stringContaining("Payment terms"),
+      expect.stringContaining("Risk review")
+    ]);
+  });
+
   it("renders dedicated guideline creation route", () => {
     renderAt("/guidelines/new");
 
