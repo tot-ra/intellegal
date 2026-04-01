@@ -13,6 +13,7 @@ class ExtractJobRequest(BaseModel):
     document_id: str
     storage_uri: str
     mime_type: str | None = None
+    language: str | None = None
 
 
 class AcceptedJobResponse(BaseModel):

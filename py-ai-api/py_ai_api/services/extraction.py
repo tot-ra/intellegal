@@ -20,6 +20,7 @@ from ..utils.confidence import clamp_confidence
 
 DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 SUPPORTED_MIME_TYPES = {"application/pdf", "image/jpeg", "image/png", DOCX_MIME_TYPE}
+SUPPORTED_OCR_LANGUAGES = {"eng", "est", "rus"}
 
 
 class ExtractionError(Exception):
@@ -55,7 +56,7 @@ class PDFPageRenderer(Protocol):
 
 
 class OCRExtractor(Protocol):
-    def extract(self, payload: bytes) -> OCRText:
+    def extract(self, payload: bytes, language: str) -> OCRText:
         ...
 
 
@@ -86,7 +87,7 @@ class PypdfExtractor:
 
 
 class TesseractOCRExtractor:
-    def extract(self, payload: bytes) -> OCRText:
+    def extract(self, payload: bytes, language: str) -> OCRText:
         try:
             import pytesseract
             from PIL import Image
@@ -101,8 +102,8 @@ class TesseractOCRExtractor:
 
         try:
             image = Image.open(BytesIO(payload))
-            text = pytesseract.image_to_string(image)
-            data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+            text = pytesseract.image_to_string(image, lang=language)
+            data = pytesseract.image_to_data(image, lang=language, output_type=pytesseract.Output.DICT)
         except Exception as exc:  # pragma: no cover
             raise ExtractionError(
                 "OCR processing failed",
@@ -125,7 +126,7 @@ class TesseractOCRExtractor:
         return OCRText(
             text=text,
             confidence=confidence,
-            diagnostics={"engine": "tesseract", "recognized_tokens": len(values)},
+            diagnostics={"engine": "tesseract", "language": language, "recognized_tokens": len(values)},
         )
 
 
@@ -225,14 +226,20 @@ class ExtractionPipeline:
         self._ocr_extractor = ocr_extractor or TesseractOCRExtractor()
         self._pdf_page_renderer = pdf_page_renderer or PopplerPDFRenderer()
 
-    def extract_from_uri(self, storage_uri: str, mime_type: str | None = None) -> ExtractionResult:
+    def extract_from_uri(
+        self,
+        storage_uri: str,
+        mime_type: str | None = None,
+        language: str | None = None,
+    ) -> ExtractionResult:
         payload, file_path = _load_document_bytes(storage_uri)
         resolved_mime = _resolve_mime_type(mime_type, file_path)
-        return self.extract_bytes(payload, resolved_mime)
+        return self.extract_bytes(payload, resolved_mime, language)
 
-    def extract_bytes(self, payload: bytes, mime_type: str) -> ExtractionResult:
+    def extract_bytes(self, payload: bytes, mime_type: str, language: str | None = None) -> ExtractionResult:
         started = monotonic()
         mime_type = _resolve_mime_type(mime_type, None)
+        ocr_language = _resolve_ocr_language(language)
 
         raw_pages: list[str]
         ocr_used = False
@@ -245,7 +252,7 @@ class ExtractionPipeline:
             if not raw_pages:
                 raw_pages = [""]
             if _should_fallback_to_pdf_ocr(raw_pages):
-                raw_pages, confidences, ocr_diag = self._extract_pdf_pages_with_ocr(payload)
+                raw_pages, confidences, ocr_diag = self._extract_pdf_pages_with_ocr(payload, ocr_language)
                 source = "ocr"
                 ocr_used = True
         elif mime_type == DOCX_MIME_TYPE:
@@ -254,7 +261,7 @@ class ExtractionPipeline:
         elif mime_type in {"image/jpeg", "image/png"}:
             source = "ocr"
             ocr_used = True
-            ocr_text = self._ocr_extractor.extract(payload)
+            ocr_text = self._ocr_extractor.extract(payload, ocr_language)
             raw_pages = [ocr_text.text]
             ocr_diag = dict(ocr_text.diagnostics)
             if ocr_text.confidence is not None:
@@ -305,14 +312,18 @@ class ExtractionPipeline:
             diagnostics=diagnostics,
         )
 
-    def _extract_pdf_pages_with_ocr(self, payload: bytes) -> tuple[list[str], list[float], dict[str, Any]]:
+    def _extract_pdf_pages_with_ocr(
+        self,
+        payload: bytes,
+        language: str,
+    ) -> tuple[list[str], list[float], dict[str, Any]]:
         rendered_pages = self._pdf_page_renderer.render_pages(payload)
         texts: list[str] = []
         confidences: list[float] = []
         page_diagnostics: list[dict[str, Any]] = []
 
         for image_payload in rendered_pages:
-            ocr_text = self._ocr_extractor.extract(image_payload)
+            ocr_text = self._ocr_extractor.extract(image_payload, language)
             texts.append(ocr_text.text)
             confidences.append(
                 clamp_confidence(ocr_text.confidence) if ocr_text.confidence is not None else 0.0
@@ -324,6 +335,7 @@ class ExtractionPipeline:
             confidences,
             {
                 "engine": "tesseract",
+                "language": language,
                 "pdf_fallback": True,
                 "rendered_page_count": len(rendered_pages),
                 "page_diagnostics": page_diagnostics,
@@ -431,6 +443,19 @@ def _normalize_page_text(text: str) -> str:
 def _should_fallback_to_pdf_ocr(raw_pages: list[str]) -> bool:
     normalized_pages = [_normalize_page_text(text) for text in raw_pages]
     return all(not page for page in normalized_pages)
+
+
+def _resolve_ocr_language(language: str | None) -> str:
+    candidate = (language or "eng").strip().lower()
+    if candidate not in SUPPORTED_OCR_LANGUAGES:
+        raise ExtractionError(
+            "unsupported OCR language",
+            code="invalid_argument",
+            status_code=400,
+            retriable=False,
+            details={"language": candidate, "supported_languages": sorted(SUPPORTED_OCR_LANGUAGES)},
+        )
+    return candidate
 
 
 def _heuristic_confidence(text: str) -> float:

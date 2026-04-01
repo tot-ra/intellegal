@@ -270,6 +270,7 @@ describe("ApiClient", () => {
           JSON.stringify({
             id: "00000000-0000-4000-8000-000000000001",
             name: "Updated Contract",
+            language: "eng",
             tags: ["MSA", "Finance"],
             file_count: 0,
             created_at: "2025-01-01T00:00:00Z",

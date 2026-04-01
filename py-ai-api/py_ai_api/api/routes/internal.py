@@ -62,7 +62,7 @@ def start_extract_job(
     pipeline: Annotated[ExtractionPipeline, Depends(get_extraction_pipeline)],
 ) -> AcceptedJobResponse | JSONResponse:
     try:
-        result: ExtractionResult = pipeline.extract_from_uri(payload.storage_uri, payload.mime_type)
+        result: ExtractionResult = pipeline.extract_from_uri(payload.storage_uri, payload.mime_type, payload.language)
     except ExtractionError as exc:
         return JSONResponse(
             status_code=exc.status_code,

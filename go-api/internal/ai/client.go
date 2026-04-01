@@ -91,6 +91,7 @@ type ExtractRequest struct {
 	DocumentID string `json:"document_id"`
 	StorageURI string `json:"storage_uri"`
 	MIMEType   string `json:"mime_type,omitempty"`
+	Language   string `json:"language,omitempty"`
 }
 
 type ExtractPage struct {

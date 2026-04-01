@@ -64,7 +64,7 @@ func (a *API) loadPersistedState(ctx context.Context) error {
 
 func (a *API) loadContracts(ctx context.Context, conn *pgxpool.Pool) (map[string]contract, error) {
 	rows, err := conn.Query(ctx, `
-		SELECT id, name, source_type, COALESCE(source_ref, ''), COALESCE(tags::text, '[]'),
+		SELECT id, name, language, source_type, COALESCE(source_ref, ''), COALESCE(tags::text, '[]'),
 		       created_at, updated_at
 		FROM contracts
 		ORDER BY created_at ASC`)
@@ -78,7 +78,7 @@ func (a *API) loadContracts(ctx context.Context, conn *pgxpool.Pool) (map[string
 		var item contract
 		var sourceRef string
 		var tagsRaw string
-		if err := rows.Scan(&item.ID, &item.Name, &item.SourceType, &sourceRef, &tagsRaw, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Language, &item.SourceType, &sourceRef, &tagsRaw, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan contract: %w", err)
 		}
 		if sourceRef != "" {
@@ -354,15 +354,16 @@ func (a *API) persistContract(ctx context.Context, item contract) error {
 		return fmt.Errorf("encode contract tags: %w", err)
 	}
 	_, err = conn.Exec(ctx, `
-		INSERT INTO contracts (id, name, source_type, source_ref, tags, created_at, updated_at)
-		VALUES ($1, $2, $3, NULLIF($4, ''), $5::jsonb, $6, $7)
+		INSERT INTO contracts (id, name, language, source_type, source_ref, tags, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6::jsonb, $7, $8)
 		ON CONFLICT (id) DO UPDATE
 		SET name = EXCLUDED.name,
+		    language = EXCLUDED.language,
 		    source_type = EXCLUDED.source_type,
 		    source_ref = EXCLUDED.source_ref,
 		    tags = EXCLUDED.tags,
 		    updated_at = EXCLUDED.updated_at`,
-		item.ID, item.Name, item.SourceType, item.SourceRef, string(tagsRaw), item.CreatedAt, item.UpdatedAt,
+		item.ID, item.Name, item.Language, item.SourceType, item.SourceRef, string(tagsRaw), item.CreatedAt, item.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("persist contract: %w", err)

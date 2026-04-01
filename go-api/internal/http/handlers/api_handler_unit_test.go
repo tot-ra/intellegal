@@ -218,10 +218,12 @@ func TestContract_SupportsMultipleFilesAndReordering(t *testing.T) {
 
 	// assert
 	var contractBody struct {
-		ID string `json:"id"`
+		ID       string `json:"id"`
+		Language string `json:"language"`
 	}
 	decodeJSONBodyInto(t, createContractResp, &contractBody)
 	assert.NotEmpty(t, contractBody.ID)
+	assert.Equal(t, "eng", contractBody.Language)
 
 	addFile := func(filename, mime string) string {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/contracts/"+contractBody.ID+"/files", bytes.NewReader([]byte(`{

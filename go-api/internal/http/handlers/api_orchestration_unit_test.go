@@ -183,6 +183,7 @@ func TestChatContract_BuildsAIRequestFromContractFiles(t *testing.T) {
 	api.contracts[contractID] = contract{
 		ID:        contractID,
 		Name:      "Alpha",
+		Language:  "eng",
 		FileIDs:   []string{documentID},
 		CreatedAt: now,
 		UpdatedAt: now,

@@ -3,6 +3,7 @@ import { appConfig } from "../config/env";
 export type DocumentStatus = "ingested" | "processing" | "indexed" | "failed";
 export type CheckRunStatus = "queued" | "running" | "completed" | "failed";
 export type CheckType = "clause_presence" | "llm_review";
+export type ContractLanguage = "eng" | "est" | "rus";
 
 export type ErrorEnvelope = {
   error: {
@@ -50,6 +51,7 @@ export type DocumentListResponse = {
 
 export type CreateContractRequest = {
   name: string;
+  language?: ContractLanguage;
   source_type?: "repository" | "upload" | "api";
   source_ref?: string;
   tags?: string[];
@@ -57,12 +59,14 @@ export type CreateContractRequest = {
 
 export type UpdateContractRequest = {
   name?: string;
+  language?: ContractLanguage;
   tags?: string[];
 };
 
 export type ContractResponse = {
   id: string;
   name: string;
+  language: ContractLanguage;
   source_type?: string;
   source_ref?: string;
   tags?: string[];

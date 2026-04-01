@@ -15,6 +15,7 @@ type Contracts struct {
 type ContractListRow struct {
 	ID         string
 	Name       string
+	Language   string
 	SourceType string
 	SourceRef  string
 	Tags       []string
@@ -26,6 +27,7 @@ type ContractListRow struct {
 type ContractRow struct {
 	ID         string
 	Name       string
+	Language   string
 	SourceType string
 	SourceRef  string
 	Tags       []string
@@ -56,6 +58,7 @@ func (s *Contracts) List(ctx context.Context, limit, offset int) ([]ContractList
 	rows, err := conn.Query(ctx, `
 		SELECT c.id,
 		       c.name,
+		       c.language,
 		       c.source_type,
 		       COALESCE(c.source_ref, ''),
 		       COALESCE(c.tags::text, '[]'),
@@ -80,6 +83,7 @@ func (s *Contracts) List(ctx context.Context, limit, offset int) ([]ContractList
 		if err := rows.Scan(
 			&item.ID,
 			&item.Name,
+			&item.Language,
 			&item.SourceType,
 			&sourceRef,
 			&tagsRaw,
@@ -115,10 +119,10 @@ func (s *Contracts) Get(ctx context.Context, contractID string) (ContractRow, bo
 	var sourceRef string
 	var tagsRaw string
 	err := conn.QueryRow(ctx, `
-		SELECT id, name, source_type, COALESCE(source_ref, ''), COALESCE(tags::text, '[]'), created_at, updated_at
+		SELECT id, name, language, source_type, COALESCE(source_ref, ''), COALESCE(tags::text, '[]'), created_at, updated_at
 		FROM contracts
 		WHERE id = $1`, contractID).
-		Scan(&item.ID, &item.Name, &item.SourceType, &sourceRef, &tagsRaw, &item.CreatedAt, &item.UpdatedAt)
+		Scan(&item.ID, &item.Name, &item.Language, &item.SourceType, &sourceRef, &tagsRaw, &item.CreatedAt, &item.UpdatedAt)
 	if err != nil {
 		if isNotFound(err) {
 			return ContractRow{}, false, nil

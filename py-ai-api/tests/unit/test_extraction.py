@@ -37,24 +37,25 @@ class _FakePDFRenderer:
 class _FakeOCRExtractor:
     confidence: float = 0.81
 
-    def extract(self, payload: bytes) -> OCRText:
+    def extract(self, payload: bytes, language: str) -> OCRText:
         assert payload in {b"jpeg-bytes", b"png-bytes", b"pdf-page-1", b"pdf-page-2"}
+        assert language in {"eng", "est", "rus"}
         if payload == b"pdf-page-1":
             return OCRText(
                 text="  Scanned   first \r\npage ",
                 confidence=self.confidence,
-                diagnostics={"engine": "fake-ocr", "page": 1},
+                diagnostics={"engine": "fake-ocr", "language": language, "page": 1},
             )
         if payload == b"pdf-page-2":
             return OCRText(
                 text="  Scanned   second \r\npage ",
                 confidence=self.confidence - 0.1,
-                diagnostics={"engine": "fake-ocr", "page": 2},
+                diagnostics={"engine": "fake-ocr", "language": language, "page": 2},
             )
         return OCRText(
             text="  Scanned   text \r\nfrom\timage ",
             confidence=self.confidence,
-            diagnostics={"engine": "fake-ocr"},
+            diagnostics={"engine": "fake-ocr", "language": language},
         )
 
 
@@ -89,7 +90,7 @@ def test_pdf_extraction_falls_back_to_ocr_when_embedded_text_is_empty() -> None:
         pdf_page_renderer=_FakePDFRenderer(),
     )
 
-    result = pipeline.extract_bytes(b"pdf-image-only-bytes", "application/pdf")
+    result = pipeline.extract_bytes(b"pdf-image-only-bytes", "application/pdf", "rus")
 
     assert result.mime_type == "application/pdf"
     assert [page.source for page in result.pages] == ["ocr", "ocr"]
@@ -97,6 +98,7 @@ def test_pdf_extraction_falls_back_to_ocr_when_embedded_text_is_empty() -> None:
     assert result.text == "Scanned first\npage\n\f\nScanned second\npage"
     assert result.diagnostics["ocr_used"] is True
     assert result.diagnostics["ocr"]["pdf_fallback"] is True
+    assert result.diagnostics["ocr"]["language"] == "rus"
     assert result.diagnostics["ocr"]["rendered_page_count"] == 2
 
 
@@ -107,7 +109,7 @@ def test_jpeg_ocr_extraction_uses_ocr_confidence_and_metadata() -> None:
         ocr_extractor=_FakeOCRExtractor(),
     )
 
-    result = pipeline.extract_bytes(b"jpeg-bytes", "image/jpeg")
+    result = pipeline.extract_bytes(b"jpeg-bytes", "image/jpeg", "est")
 
     assert result.mime_type == "image/jpeg"
     assert len(result.pages) == 1
@@ -117,6 +119,7 @@ def test_jpeg_ocr_extraction_uses_ocr_confidence_and_metadata() -> None:
     assert result.confidence == 0.81
     assert result.diagnostics["ocr_used"] is True
     assert result.diagnostics["ocr"]["engine"] == "fake-ocr"
+    assert result.diagnostics["ocr"]["language"] == "est"
 
 
 def test_png_ocr_extraction_uses_same_ocr_path() -> None:
@@ -132,6 +135,20 @@ def test_png_ocr_extraction_uses_same_ocr_path() -> None:
     assert len(result.pages) == 1
     assert result.pages[0].source == "ocr"
     assert result.pages[0].text == "Scanned text\nfrom image"
+
+
+def test_extraction_rejects_unsupported_ocr_language() -> None:
+    pipeline = ExtractionPipeline(
+        pdf_extractor=_FakePDFExtractor(),
+        docx_extractor=_FakeDOCXExtractor(),
+        ocr_extractor=_FakeOCRExtractor(),
+    )
+
+    with pytest.raises(ExtractionError) as err:
+        pipeline.extract_bytes(b"png-bytes", "image/png", "deu")
+
+    assert err.value.code == "invalid_argument"
+    assert err.value.details["language"] == "deu"
 
 
 def test_docx_extraction_uses_docx_text_path() -> None:

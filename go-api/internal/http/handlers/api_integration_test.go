@@ -189,6 +189,7 @@ func TestContractLifecycle_ManagesFilesAndOrderingThroughRouter(t *testing.T) {
 	var createdContract struct {
 		ID         string   `json:"id"`
 		Name       string   `json:"name"`
+		Language   string   `json:"language"`
 		SourceType string   `json:"source_type"`
 		Tags       []string `json:"tags"`
 		FileCount  int      `json:"file_count"`
@@ -196,6 +197,7 @@ func TestContractLifecycle_ManagesFilesAndOrderingThroughRouter(t *testing.T) {
 	decodeResponse(t, createResp, &createdContract)
 	require.NotEmpty(t, createdContract.ID)
 	assert.Equal(t, "MSA 2026", createdContract.Name)
+	assert.Equal(t, "eng", createdContract.Language)
 	assert.Equal(t, "api", createdContract.SourceType)
 	assert.Len(t, createdContract.Tags, 2)
 	assert.Zero(t, createdContract.FileCount)
@@ -234,6 +236,7 @@ func TestContractLifecycle_ManagesFilesAndOrderingThroughRouter(t *testing.T) {
 	var listed struct {
 		Items []struct {
 			ID        string `json:"id"`
+			Language  string `json:"language"`
 			FileCount int    `json:"file_count"`
 		} `json:"items"`
 		Total int `json:"total"`
@@ -242,12 +245,14 @@ func TestContractLifecycle_ManagesFilesAndOrderingThroughRouter(t *testing.T) {
 	assert.Equal(t, 1, listed.Total)
 	require.Len(t, listed.Items, 1)
 	assert.Equal(t, createdContract.ID, listed.Items[0].ID)
+	assert.Equal(t, "eng", listed.Items[0].Language)
 	assert.Equal(t, 2, listed.Items[0].FileCount)
 
 	getResp := get(t, ts.URL+"/api/v1/contracts/"+createdContract.ID)
 	require.Equal(t, http.StatusOK, getResp.StatusCode)
 	var fetched struct {
 		ID        string `json:"id"`
+		Language  string `json:"language"`
 		FileCount int    `json:"file_count"`
 		Files     []struct {
 			ID       string `json:"id"`
@@ -257,6 +262,7 @@ func TestContractLifecycle_ManagesFilesAndOrderingThroughRouter(t *testing.T) {
 	}
 	decodeResponse(t, getResp, &fetched)
 	assert.Equal(t, createdContract.ID, fetched.ID)
+	assert.Equal(t, "eng", fetched.Language)
 	assert.Equal(t, 2, fetched.FileCount)
 	require.Len(t, fetched.Files, 2)
 	assert.Equal(t, firstFile.ID, fetched.Files[0].ID)

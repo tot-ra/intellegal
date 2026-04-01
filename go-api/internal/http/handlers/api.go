@@ -41,6 +41,7 @@ var (
 		"application/vnd.openxmlformats-officedocument.wordprocessingml.document": {},
 	}
 	validSourceTypes       = map[string]struct{}{"repository": {}, "upload": {}, "api": {}}
+	validContractLanguages = map[string]struct{}{"eng": {}, "est": {}, "rus": {}}
 	validDocStatuses       = map[string]struct{}{documentStatusIngested: {}, documentStatusProcessing: {}, documentStatusIndexed: {}, documentStatusFailed: {}}
 	errIdempotencyConflict = errors.New("idempotency conflict")
 )
@@ -182,6 +183,7 @@ type document struct {
 type contract struct {
 	ID         string
 	Name       string
+	Language   string
 	SourceType string
 	SourceRef  string
 	Tags       []string
@@ -269,14 +271,16 @@ type documentTextResponse struct {
 
 type createContractRequest struct {
 	Name       string   `json:"name"`
+	Language   string   `json:"language,omitempty"`
 	SourceType string   `json:"source_type,omitempty"`
 	SourceRef  string   `json:"source_ref,omitempty"`
 	Tags       []string `json:"tags,omitempty"`
 }
 
 type updateContractRequest struct {
-	Name *string   `json:"name,omitempty"`
-	Tags *[]string `json:"tags,omitempty"`
+	Name     *string   `json:"name,omitempty"`
+	Language *string   `json:"language,omitempty"`
+	Tags     *[]string `json:"tags,omitempty"`
 }
 
 type reorderContractFilesRequest struct {
@@ -286,6 +290,7 @@ type reorderContractFilesRequest struct {
 type contractResponse struct {
 	ID         string             `json:"id"`
 	Name       string             `json:"name"`
+	Language   string             `json:"language"`
 	SourceType string             `json:"source_type,omitempty"`
 	SourceRef  string             `json:"source_ref,omitempty"`
 	Tags       []string           `json:"tags,omitempty"`
@@ -485,6 +490,7 @@ func mapContract(item contract, files []documentResponse) contractResponse {
 	return contractResponse{
 		ID:         item.ID,
 		Name:       item.Name,
+		Language:   contractLanguageOrDefault(item.Language),
 		SourceType: item.SourceType,
 		SourceRef:  item.SourceRef,
 		Tags:       item.Tags,
@@ -493,6 +499,14 @@ func mapContract(item contract, files []documentResponse) contractResponse {
 		CreatedAt:  item.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:  item.UpdatedAt.Format(time.RFC3339),
 	}
+}
+
+func contractLanguageOrDefault(language string) string {
+	language = strings.TrimSpace(language)
+	if language == "" {
+		return "eng"
+	}
+	return language
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {

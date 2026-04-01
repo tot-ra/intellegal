@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ContractsPage } from "./ContractsPage";
@@ -28,7 +34,10 @@ function renderPage() {
   const router = createMemoryRouter(
     [
       { path: "/contracts", element: <ContractsPage /> },
-      { path: "/contracts/:contractId/edit", element: <div>Contract detail</div> },
+      {
+        path: "/contracts/:contractId/edit",
+        element: <div>Contract detail</div>,
+      },
       { path: "/contracts/compare", element: <div>Compare</div> },
       { path: "/guidelines/run", element: <div>Guidelines run</div> },
     ],
@@ -50,6 +59,7 @@ describe("ContractsPage", () => {
         {
           id: "contract-1",
           name: "Alpha",
+          language: "eng",
           file_count: 1,
           tags: ["vendor"],
           created_at: "2026-01-01T00:00:00Z",
@@ -96,10 +106,15 @@ describe("ContractsPage", () => {
     renderPage();
 
     await screen.findByText("Alpha");
-    fireEvent.click(screen.getByRole("button", { name: "Open contracts assistant" }));
-    fireEvent.change(screen.getByLabelText("Ask a question about the contracts list"), {
-      target: { value: "Which contracts mention payment terms?" },
-    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open contracts assistant" }),
+    );
+    fireEvent.change(
+      screen.getByLabelText("Ask a question about the contracts list"),
+      {
+        target: { value: "Which contracts mention payment terms?" },
+      },
+    );
     fireEvent.click(screen.getByRole("button", { name: "Ask" }));
 
     await waitFor(() => {
@@ -115,17 +130,20 @@ describe("ContractsPage", () => {
       });
     });
 
-    expect(await screen.findByText("Alpha mentions payment terms.")).toBeVisible();
+    expect(
+      await screen.findByText("Alpha mentions payment terms."),
+    ).toBeVisible();
     expect(screen.getByText(/No contracts selected/)).toBeVisible();
-    expect(screen.getByRole("link", { name: /alpha.pdf: Matched payment language/ })).toHaveAttribute(
-      "href",
-      "/contracts/contract-1/edit",
-    );
+    expect(
+      screen.getByRole("link", { name: /alpha.pdf: Matched payment language/ }),
+    ).toHaveAttribute("href", "/contracts/contract-1/edit");
     expect(screen.getByText("I found 1 result.")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Show Results" }));
     expect(screen.getByText("payment terms apply")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Filter List By IDs" }));
-    expect(screen.getByText(/Assistant filter active: 1 contract shown/)).toBeVisible();
+    expect(
+      screen.getByText(/Assistant filter active: 1 contract shown/),
+    ).toBeVisible();
   });
 
   it("scopes assistant retrieval to selected contracts for deeper investigation", async () => {
@@ -134,6 +152,7 @@ describe("ContractsPage", () => {
         {
           id: "contract-1",
           name: "Alpha",
+          language: "eng",
           file_count: 1,
           created_at: "2026-01-01T00:00:00Z",
           updated_at: "2026-01-01T00:00:00Z",
@@ -141,6 +160,7 @@ describe("ContractsPage", () => {
         {
           id: "contract-2",
           name: "Beta",
+          language: "eng",
           file_count: 1,
           created_at: "2026-01-02T00:00:00Z",
           updated_at: "2026-01-02T00:00:00Z",
@@ -188,10 +208,15 @@ describe("ContractsPage", () => {
 
     await screen.findByText("Alpha");
     fireEvent.click(screen.getByLabelText("Select Alpha"));
-    fireEvent.click(screen.getByRole("button", { name: "Open contracts assistant" }));
-    fireEvent.change(screen.getByLabelText("Ask a question about the contracts list"), {
-      target: { value: "late fee" },
-    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open contracts assistant" }),
+    );
+    fireEvent.change(
+      screen.getByLabelText("Ask a question about the contracts list"),
+      {
+        target: { value: "late fee" },
+      },
+    );
     fireEvent.click(screen.getByRole("button", { name: "Ask" }));
 
     await waitFor(() => {
@@ -202,6 +227,8 @@ describe("ContractsPage", () => {
       });
     });
 
-    expect(screen.getByText("Only the selected contracts are searched.")).toBeVisible();
+    expect(
+      screen.getByText("Only the selected contracts are searched."),
+    ).toBeVisible();
   });
 });

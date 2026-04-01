@@ -1,13 +1,23 @@
-import { type DragEvent, type FormEvent, type KeyboardEvent, useRef, useState } from "react";
+import {
+  type DragEvent,
+  type FormEvent,
+  type KeyboardEvent,
+  useRef,
+  useState,
+} from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { apiClient } from "../api/client";
-import { addAuditEvent, enqueuePendingAutoGuidelineRuns, listStoredGuidelineRules } from "../app/localState";
+import { apiClient, type ContractLanguage } from "../api/client";
+import {
+  addAuditEvent,
+  enqueuePendingAutoGuidelineRuns,
+  listStoredGuidelineRules,
+} from "../app/localState";
 import {
   deriveContractNameFromFile,
   isRecoverableProcessingError,
   isSupportedContractFile,
   parseTagsInput,
-  toBase64
+  toBase64,
 } from "./contractUpload";
 
 export function NewContractPage() {
@@ -17,6 +27,7 @@ export function NewContractPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [tagsInput, setTagsInput] = useState("");
+  const [language, setLanguage] = useState<ContractLanguage>("eng");
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const sourceType = "upload" as const;
@@ -26,7 +37,9 @@ export function NewContractPage() {
 
     setFiles((prev) => {
       const next = [...prev];
-      const existing = new Set(prev.map((file) => `${file.name}:${file.size}:${file.lastModified}`));
+      const existing = new Set(
+        prev.map((file) => `${file.name}:${file.size}:${file.lastModified}`),
+      );
 
       for (const file of incomingFiles) {
         const key = `${file.name}:${file.size}:${file.lastModified}`;
@@ -49,8 +62,8 @@ export function NewContractPage() {
             file.name === fileToRemove.name &&
             file.size === fileToRemove.size &&
             file.lastModified === fileToRemove.lastModified
-          )
-      )
+          ),
+      ),
     );
   };
 
@@ -68,14 +81,17 @@ export function NewContractPage() {
   const uploadDocument = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const resolvedContractName = contractName.trim() || deriveContractNameFromFile(files[0]);
+    const resolvedContractName =
+      contractName.trim() || deriveContractNameFromFile(files[0]);
 
     if (files.length === 0) {
       setUploadError("Select one or more files first.");
       return;
     }
     if (!resolvedContractName) {
-      setUploadError("Contract name could not be derived from the selected file.");
+      setUploadError(
+        "Contract name could not be derived from the selected file.",
+      );
       return;
     }
     for (const file of files) {
@@ -96,10 +112,14 @@ export function NewContractPage() {
       const contract = await apiClient.createContract(
         {
           name: resolvedContractName,
+          language,
           source_type: sourceType,
-          tags: tags.length > 0 ? tags : undefined
+          tags: tags.length > 0 ? tags : undefined,
         },
-        { idempotencyKey: globalThis.crypto?.randomUUID?.() ?? `contract-${Date.now()}` }
+        {
+          idempotencyKey:
+            globalThis.crypto?.randomUUID?.() ?? `contract-${Date.now()}`,
+        },
       );
       createdContractId = contract.id;
       let processingFailureCount = 0;
@@ -118,9 +138,13 @@ export function NewContractPage() {
                 | "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
               source_type: sourceType,
               tags: tags.length > 0 ? tags : undefined,
-              content_base64: contentBase64
+              content_base64: contentBase64,
             },
-            { idempotencyKey: globalThis.crypto?.randomUUID?.() ?? `upload-${Date.now()}-${file.name}` }
+            {
+              idempotencyKey:
+                globalThis.crypto?.randomUUID?.() ??
+                `upload-${Date.now()}-${file.name}`,
+            },
           );
           uploadedDocumentIds.push(uploadedDocument.id);
         } catch (err) {
@@ -135,7 +159,10 @@ export function NewContractPage() {
       addAuditEvent({
         type: "contract.created",
         message: `Created contract ${contract.name}`,
-        metadata: { contract_id: contract.id, file_count: String(files.length) }
+        metadata: {
+          contract_id: contract.id,
+          file_count: String(files.length),
+        },
       });
 
       const autoRunRuleIds = listStoredGuidelineRules()
@@ -149,16 +176,21 @@ export function NewContractPage() {
         autoRunRuleIds.length > 0
           ? `Contract created. ${autoRunRuleIds.length} automatic guideline check(s) will run in the Files section when processing is ready.`
           : processingFailureCount > 0
-          ? `Contract created. ${processingFailureCount} file(s) uploaded with text-processing issues; track status here.`
-          : "Contract created. Indexing status will update here.";
-      navigate(`/contracts/${encodeURIComponent(contract.id)}/edit?notice=${encodeURIComponent(notice)}`);
+            ? `Contract created. ${processingFailureCount} file(s) uploaded with text-processing issues; track status here.`
+            : "Contract created. Indexing status will update here.";
+      navigate(
+        `/contracts/${encodeURIComponent(contract.id)}/edit?notice=${encodeURIComponent(notice)}`,
+      );
     } catch (err) {
       if (createdContractId) {
-        const message = err instanceof Error ? err.message : "File upload failed after contract creation.";
+        const message =
+          err instanceof Error
+            ? err.message
+            : "File upload failed after contract creation.";
         navigate(
           `/contracts/${encodeURIComponent(createdContractId)}/edit?notice=${encodeURIComponent(
-            `Contract was created, but some file steps failed: ${message}`
-          )}`
+            `Contract was created, but some file steps failed: ${message}`,
+          )}`,
         );
         return;
       }
@@ -180,7 +212,10 @@ export function NewContractPage() {
 
       <form className="panel" onSubmit={uploadDocument}>
         <h3>Upload Contract</h3>
-        <p className="muted">Use this when several files belong to one contract. For one-file-per-contract imports, use Batch Import.</p>
+        <p className="muted">
+          Use this when several files belong to one contract. For
+          one-file-per-contract imports, use Batch Import.
+        </p>
         <div className="form-grid form-grid-single-column">
           <label>
             Contract Name (optional)
@@ -189,6 +224,23 @@ export function NewContractPage() {
               onChange={(event) => setContractName(event.target.value)}
               placeholder="Leave blank to use the first file name"
             />
+          </label>
+          <label>
+            Contract Language
+            <select
+              aria-label="Contract Language"
+              value={language}
+              onChange={(event) =>
+                setLanguage(event.target.value as ContractLanguage)
+              }
+            >
+              <option value="eng">English</option>
+              <option value="est">Estonian</option>
+              <option value="rus">Russian</option>
+            </select>
+            <span className="muted">
+              Used as the OCR hint for scanned PDFs and image files.
+            </span>
           </label>
           <div className="upload-field">
             <span className="upload-field-label">Files</span>
@@ -220,9 +272,16 @@ export function NewContractPage() {
                   event.target.value = "";
                 }}
               />
-              <p className="upload-dropzone-title">Drop files here or click to browse</p>
-              <p className="muted">Supports multiple PDF, JPEG, PNG, and DOCX files.</p>
-              <button type="button" className="secondary upload-dropzone-action">
+              <p className="upload-dropzone-title">
+                Drop files here or click to browse
+              </p>
+              <p className="muted">
+                Supports multiple PDF, JPEG, PNG, and DOCX files.
+              </p>
+              <button
+                type="button"
+                className="secondary upload-dropzone-action"
+              >
                 Choose Files
               </button>
             </div>
@@ -265,7 +324,11 @@ export function NewContractPage() {
             />
           </label>
         </div>
-        {files.length > 0 ? <p className="muted">Upload order: {files.map((file) => file.name).join(" -> ")}</p> : null}
+        {files.length > 0 ? (
+          <p className="muted">
+            Upload order: {files.map((file) => file.name).join(" -> ")}
+          </p>
+        ) : null}
         {uploadError ? <p className="error-text">{uploadError}</p> : null}
         <div className="form-actions-end">
           <button type="submit" disabled={uploading}>

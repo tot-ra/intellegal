@@ -10,7 +10,7 @@ COPY pyproject.toml README.md ./
 COPY py_ai_api ./py_ai_api
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends poppler-utils tesseract-ocr \
+    && apt-get install -y --no-install-recommends poppler-utils tesseract-ocr tesseract-ocr-est tesseract-ocr-rus \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --upgrade pip \
     && pip install .

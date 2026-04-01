@@ -35,6 +35,7 @@ func (r *inMemoryContractReader) List(_ context.Context, limit, offset int) ([]m
 		out = append(out, models.ContractListRow{
 			ID:         item.ID,
 			Name:       item.Name,
+			Language:   item.Language,
 			SourceType: item.SourceType,
 			SourceRef:  item.SourceRef,
 			Tags:       append([]string(nil), item.Tags...),
@@ -79,6 +80,7 @@ func (r *inMemoryContractReader) Get(_ context.Context, contractID string) (mode
 	return models.ContractRow{
 		ID:         item.ID,
 		Name:       item.Name,
+		Language:   item.Language,
 		SourceType: item.SourceType,
 		SourceRef:  item.SourceRef,
 		Tags:       append([]string(nil), item.Tags...),

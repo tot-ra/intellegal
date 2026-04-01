@@ -356,6 +356,7 @@ func (a *API) createDocumentFromRequest(ctx context.Context, req createDocumentR
 	}
 
 	contractID := strings.TrimSpace(req.ContractID)
+	contractLanguage := "eng"
 	if contractID != "" {
 		if !ids.IsUUID(contractID) {
 			return document{}, errors.New("contract_id must be a valid UUID")
@@ -363,12 +364,15 @@ func (a *API) createDocumentFromRequest(ctx context.Context, req createDocumentR
 		if a.contractsModel == nil {
 			return document{}, db.ErrNotConfigured
 		}
-		_, exists, err := a.contractsModel.Get(ctx, contractID)
+		contractRow, exists, err := a.contractsModel.Get(ctx, contractID)
 		if err != nil {
 			return document{}, err
 		}
 		if !exists {
 			return document{}, errors.New("contract not found")
+		}
+		if strings.TrimSpace(contractRow.Language) != "" {
+			contractLanguage = contractRow.Language
 		}
 	}
 
@@ -447,6 +451,7 @@ func (a *API) createDocumentFromRequest(ctx context.Context, req createDocumentR
 		DocumentID: docID,
 		StorageURI: storageURI,
 		MIMEType:   req.MIMEType,
+		Language:   contractLanguage,
 	})
 	if err != nil {
 		a.markDocumentFailed(docID, err)

@@ -34,6 +34,15 @@ func (a *API) CreateContract(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	language := strings.TrimSpace(req.Language)
+	if language == "" {
+		language = "eng"
+	}
+	if _, ok := validContractLanguages[language]; !ok {
+		writeError(w, http.StatusBadRequest, "invalid_argument", "unsupported language", false, nil)
+		return
+	}
+
 	tags, err := normalizeTags(req.Tags)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_argument", err.Error(), false, nil)
@@ -44,6 +53,7 @@ func (a *API) CreateContract(w http.ResponseWriter, r *http.Request) {
 	item := contract{
 		ID:         ids.NewUUID(),
 		Name:       name,
+		Language:   language,
 		SourceType: sourceType,
 		SourceRef:  req.SourceRef,
 		Tags:       tags,
@@ -65,6 +75,7 @@ func (a *API) CreateContract(w http.ResponseWriter, r *http.Request) {
 
 	a.emitAuditEvent("contract.created", "contract", item.ID, map[string]any{
 		"name":        item.Name,
+		"language":    item.Language,
 		"source_type": item.SourceType,
 	})
 	writeJSON(w, http.StatusCreated, mapContract(item, nil))
@@ -111,6 +122,7 @@ func (a *API) ListContracts(w http.ResponseWriter, r *http.Request) {
 		respItems = append(respItems, contractResponse{
 			ID:         item.ID,
 			Name:       item.Name,
+			Language:   contractLanguageOrDefault(item.Language),
 			SourceType: item.SourceType,
 			SourceRef:  item.SourceRef,
 			Tags:       item.Tags,
@@ -171,6 +183,7 @@ func (a *API) GetContract(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, contractResponse{
 		ID:         item.ID,
 		Name:       item.Name,
+		Language:   contractLanguageOrDefault(item.Language),
 		SourceType: item.SourceType,
 		SourceRef:  item.SourceRef,
 		Tags:       item.Tags,
@@ -192,8 +205,8 @@ func (a *API) UpdateContract(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if req.Name == nil && req.Tags == nil {
-		writeError(w, http.StatusBadRequest, "invalid_argument", "at least one of name or tags is required", false, nil)
+	if req.Name == nil && req.Language == nil && req.Tags == nil {
+		writeError(w, http.StatusBadRequest, "invalid_argument", "at least one of name, language or tags is required", false, nil)
 		return
 	}
 
@@ -213,6 +226,21 @@ func (a *API) UpdateContract(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		item.Name = name
+	}
+
+	if req.Language != nil {
+		language := strings.TrimSpace(*req.Language)
+		if language == "" {
+			a.mu.Unlock()
+			writeError(w, http.StatusBadRequest, "invalid_argument", "language is required", false, nil)
+			return
+		}
+		if _, ok := validContractLanguages[language]; !ok {
+			a.mu.Unlock()
+			writeError(w, http.StatusBadRequest, "invalid_argument", "unsupported language", false, nil)
+			return
+		}
+		item.Language = language
 	}
 
 	if req.Tags != nil {

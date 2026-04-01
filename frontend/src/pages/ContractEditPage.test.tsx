@@ -103,6 +103,7 @@ describe("ContractEditPage", () => {
     apiMocks.getContract.mockResolvedValue({
       id: "contract-1",
       name: "Alpha",
+      language: "eng",
       file_count: 1,
       files: [
         {
@@ -181,6 +182,7 @@ describe("ContractEditPage", () => {
     apiMocks.getContract.mockResolvedValue({
       id: "contract-1",
       name: "Alpha",
+      language: "eng",
       file_count: 1,
       files: [
         {
@@ -255,6 +257,7 @@ describe("ContractEditPage", () => {
     apiMocks.getContract.mockResolvedValue({
       id: "contract-1",
       name: "Alpha",
+      language: "eng",
       file_count: 1,
       files: [
         {
@@ -347,6 +350,7 @@ describe("ContractEditPage", () => {
     apiMocks.getContract.mockResolvedValue({
       id: "contract-1",
       name: "Alpha",
+      language: "eng",
       file_count: 1,
       files: [
         {
@@ -396,6 +400,7 @@ describe("ContractEditPage", () => {
     apiMocks.getContract.mockResolvedValue({
       id: "contract-1",
       name: "Alpha",
+      language: "eng",
       file_count: 1,
       files: [
         {
@@ -494,6 +499,7 @@ describe("ContractEditPage", () => {
     apiMocks.getContract.mockResolvedValue({
       id: "contract-1",
       name: "Alpha",
+      language: "eng",
       file_count: 1,
       files: [
         {
@@ -572,6 +578,7 @@ describe("ContractEditPage", () => {
     apiMocks.getContract.mockResolvedValue({
       id: "contract-1",
       name: "Alpha",
+      language: "eng",
       file_count: 1,
       files: [
         {
@@ -645,6 +652,7 @@ describe("ContractEditPage", () => {
     apiMocks.getContract.mockResolvedValue({
       id: "contract-1",
       name: "Alpha",
+      language: "eng",
       file_count: 1,
       files: [
         {
@@ -667,7 +675,9 @@ describe("ContractEditPage", () => {
       text: "Contract text",
       has_text: true,
     });
-    apiMocks.getDocumentContentUrl.mockReturnValue("http://localhost/file.docx");
+    apiMocks.getDocumentContentUrl.mockReturnValue(
+      "http://localhost/file.docx",
+    );
 
     renderPage();
 
@@ -680,7 +690,9 @@ describe("ContractEditPage", () => {
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(appendChildSpy).toHaveBeenCalledWith(downloadLink);
     expect(removeChildSpy).toHaveBeenCalledWith(downloadLink);
-    expect(screen.getByRole("heading", { name: "Contract Text" })).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Contract Text" }),
+    ).toBeVisible();
 
     clickSpy.mockRestore();
     createElementSpy.mockRestore();
