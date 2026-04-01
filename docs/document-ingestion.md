@@ -57,8 +57,8 @@ sequenceDiagram
 - `frontend/src/pages/contractUpload.ts`
 - `go-api/internal/http/handlers/documents.go`
 - `go-api/internal/http/handlers/contracts.go`
-- `py-ai-api/py_ai_api/extraction.py`
-- `py-ai-api/py_ai_api/indexing.py`
+- `py-ai-api/py_ai_api/services/extraction.py`
+- `py-ai-api/py_ai_api/services/indexing.py`
 
 ## Upload variants
 
@@ -79,11 +79,19 @@ flowchart LR
     A{"Mime type"} -->|"PDF"| B["pypdf page text"]
     A -->|"DOCX"| C["python-docx text"]
     A -->|"JPEG / PNG"| D["Tesseract OCR"]
-    B --> E["Normalize text"]
-    C --> E
-    D --> E
-    E --> F["Return full text + page text + diagnostics"]
+    B --> E{"Text found?"}
+    E -->|"Yes"| F["Normalize text"]
+    E -->|"No"| G["Render PDF pages + OCR"]
+    C --> F
+    D --> F
+    G --> F
+    F --> H["Return full text + page text + diagnostics"]
 ```
+
+### OCR nuance
+- PDFs try native text extraction first
+- If a PDF is effectively image-only after normalization, each page is rendered and OCR'd before indexing
+- See [OCR + Text Extraction](./ocr-text-extraction.md) for the full extraction/runtime details
 
 ## Indexing
 

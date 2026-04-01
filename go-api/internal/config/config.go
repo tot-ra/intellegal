@@ -44,7 +44,7 @@ func Load() (Config, error) {
 		DatabasePingTimeout:  5 * time.Second,
 		InternalServiceToken: defaultInternalToken,
 		InternalAIBaseURL:    "http://localhost:8000",
-		InternalAITimeout:    90 * time.Second,
+		InternalAITimeout:    5 * time.Minute,
 		ExternalCopyTimeout:  8 * time.Second,
 		ExternalCopyRetries:  3,
 		MinIOEndpoint:        "minio:9000",

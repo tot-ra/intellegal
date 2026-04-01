@@ -4,8 +4,11 @@ import hashlib
 import mimetypes
 import os
 import re
+import subprocess
+import tempfile
 import unicodedata
 from io import BytesIO
+from pathlib import Path
 from time import monotonic
 from typing import Any, Protocol
 from urllib import error as urlerror
@@ -43,6 +46,11 @@ class PDFExtractor(Protocol):
 
 class DOCXExtractor(Protocol):
     def extract_text(self, payload: bytes) -> str:
+        ...
+
+
+class PDFPageRenderer(Protocol):
+    def render_pages(self, payload: bytes) -> list[bytes]:
         ...
 
 
@@ -121,6 +129,55 @@ class TesseractOCRExtractor:
         )
 
 
+class PopplerPDFRenderer:
+    def render_pages(self, payload: bytes) -> list[bytes]:
+        with tempfile.TemporaryDirectory(prefix="pdf-ocr-") as tmp_dir:
+            pdf_path = Path(tmp_dir) / "input.pdf"
+            output_prefix = Path(tmp_dir) / "page"
+            pdf_path.write_bytes(payload)
+
+            try:
+                subprocess.run(
+                    [
+                        "pdftoppm",
+                        "-png",
+                        "-r",
+                        "200",
+                        str(pdf_path),
+                        str(output_prefix),
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+            except FileNotFoundError as exc:  # pragma: no cover
+                raise ExtractionError(
+                    "PDF OCR renderer is unavailable",
+                    code="dependency_unavailable",
+                    status_code=500,
+                    retriable=False,
+                    details={"dependency": "pdftoppm"},
+                ) from exc
+            except subprocess.CalledProcessError as exc:  # pragma: no cover
+                raise ExtractionError(
+                    "PDF page rendering failed",
+                    code="dependency_unavailable",
+                    status_code=500,
+                    retriable=True,
+                    details={"stderr": (exc.stderr or "").strip()},
+                ) from exc
+
+            images = sorted(Path(tmp_dir).glob("page-*.png"))
+            if not images:
+                raise ExtractionError(
+                    "PDF page rendering produced no images",
+                    code="dependency_unavailable",
+                    status_code=500,
+                    retriable=True,
+                )
+            return [image_path.read_bytes() for image_path in images]
+
+
 class PythonDocxExtractor:
     def extract_text(self, payload: bytes) -> str:
         try:
@@ -161,10 +218,12 @@ class ExtractionPipeline:
         pdf_extractor: PDFExtractor | None = None,
         docx_extractor: DOCXExtractor | None = None,
         ocr_extractor: OCRExtractor | None = None,
+        pdf_page_renderer: PDFPageRenderer | None = None,
     ) -> None:
         self._pdf_extractor = pdf_extractor or PypdfExtractor()
         self._docx_extractor = docx_extractor or PythonDocxExtractor()
         self._ocr_extractor = ocr_extractor or TesseractOCRExtractor()
+        self._pdf_page_renderer = pdf_page_renderer or PopplerPDFRenderer()
 
     def extract_from_uri(self, storage_uri: str, mime_type: str | None = None) -> ExtractionResult:
         payload, file_path = _load_document_bytes(storage_uri)
@@ -185,6 +244,10 @@ class ExtractionPipeline:
             raw_pages = self._pdf_extractor.extract_pages(payload)
             if not raw_pages:
                 raw_pages = [""]
+            if _should_fallback_to_pdf_ocr(raw_pages):
+                raw_pages, confidences, ocr_diag = self._extract_pdf_pages_with_ocr(payload)
+                source = "ocr"
+                ocr_used = True
         elif mime_type == DOCX_MIME_TYPE:
             source = "docx_text"
             raw_pages = [self._docx_extractor.extract_text(payload)]
@@ -240,6 +303,31 @@ class ExtractionPipeline:
             pages=pages,
             confidence=mean_confidence,
             diagnostics=diagnostics,
+        )
+
+    def _extract_pdf_pages_with_ocr(self, payload: bytes) -> tuple[list[str], list[float], dict[str, Any]]:
+        rendered_pages = self._pdf_page_renderer.render_pages(payload)
+        texts: list[str] = []
+        confidences: list[float] = []
+        page_diagnostics: list[dict[str, Any]] = []
+
+        for image_payload in rendered_pages:
+            ocr_text = self._ocr_extractor.extract(image_payload)
+            texts.append(ocr_text.text)
+            confidences.append(
+                clamp_confidence(ocr_text.confidence) if ocr_text.confidence is not None else 0.0
+            )
+            page_diagnostics.append(dict(ocr_text.diagnostics))
+
+        return (
+            texts,
+            confidences,
+            {
+                "engine": "tesseract",
+                "pdf_fallback": True,
+                "rendered_page_count": len(rendered_pages),
+                "page_diagnostics": page_diagnostics,
+            },
         )
 
 
@@ -338,6 +426,11 @@ def _normalize_page_text(text: str) -> str:
     while compact_lines and compact_lines[0] == "":
         compact_lines.pop(0)
     return "\n".join(compact_lines)
+
+
+def _should_fallback_to_pdf_ocr(raw_pages: list[str]) -> bool:
+    normalized_pages = [_normalize_page_text(text) for text in raw_pages]
+    return all(not page for page in normalized_pages)
 
 
 def _heuristic_confidence(text: str) -> float:

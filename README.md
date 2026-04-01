@@ -72,7 +72,7 @@ This process is currently semi-manual, slow, and hard to scale.
 
 ### ✨ Features
 - [Document Ingestion](./docs/document-ingestion.md)
-- OCR + text extraction pipeline
+- [OCR + Text Extraction](./docs/ocr-text-extraction.md)
 - [Contract Comparison](./docs/contract-comparison.md)
 - [Contracts RAG Assistant](./docs/contracts-rag-assistant.md)
 - [Clause-Presence Checks](./docs/clause-presence-checks.md)

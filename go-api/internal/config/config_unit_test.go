@@ -26,7 +26,7 @@ func TestLoad_ReturnsDefaultsWhenRequiredTokenIsPresent(t *testing.T) {
 	assert.Equal(t, "minio:9000", cfg.MinIOEndpoint)
 	assert.Equal(t, "contracts", cfg.MinIOBucket)
 	assert.Equal(t, 5*time.Second, cfg.DatabasePingTimeout)
-	assert.Equal(t, 90*time.Second, cfg.InternalAITimeout)
+	assert.Equal(t, 5*time.Minute, cfg.InternalAITimeout)
 	require.NotEmpty(t, cfg.CORSAllowedOrigins)
 	assert.Equal(t, "http://localhost:3000", cfg.CORSAllowedOrigins[0])
 }

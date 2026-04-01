@@ -27,12 +27,30 @@ class _FakeDOCXExtractor:
         return "  Master   Service  Agreement \r\n\nTerm:\t12 months "
 
 
+class _FakePDFRenderer:
+    def render_pages(self, payload: bytes) -> list[bytes]:
+        assert payload == b"pdf-image-only-bytes"
+        return [b"pdf-page-1", b"pdf-page-2"]
+
+
 @dataclass
 class _FakeOCRExtractor:
     confidence: float = 0.81
 
     def extract(self, payload: bytes) -> OCRText:
-        assert payload in {b"jpeg-bytes", b"png-bytes"}
+        assert payload in {b"jpeg-bytes", b"png-bytes", b"pdf-page-1", b"pdf-page-2"}
+        if payload == b"pdf-page-1":
+            return OCRText(
+                text="  Scanned   first \r\npage ",
+                confidence=self.confidence,
+                diagnostics={"engine": "fake-ocr", "page": 1},
+            )
+        if payload == b"pdf-page-2":
+            return OCRText(
+                text="  Scanned   second \r\npage ",
+                confidence=self.confidence - 0.1,
+                diagnostics={"engine": "fake-ocr", "page": 2},
+            )
         return OCRText(
             text="  Scanned   text \r\nfrom\timage ",
             confidence=self.confidence,
@@ -56,6 +74,30 @@ def test_pdf_extraction_normalizes_text_and_preserves_page_boundaries() -> None:
     assert result.text == "First page\nline 1\n\nline 2\n\f\nSecond page"
     assert result.diagnostics["page_count"] == 2
     assert result.diagnostics["ocr_used"] is False
+
+
+def test_pdf_extraction_falls_back_to_ocr_when_embedded_text_is_empty() -> None:
+    class _EmptyPDFExtractor:
+        def extract_pages(self, payload: bytes) -> list[str]:
+            assert payload == b"pdf-image-only-bytes"
+            return ["\n\n", "   "]
+
+    pipeline = ExtractionPipeline(
+        pdf_extractor=_EmptyPDFExtractor(),
+        docx_extractor=_FakeDOCXExtractor(),
+        ocr_extractor=_FakeOCRExtractor(),
+        pdf_page_renderer=_FakePDFRenderer(),
+    )
+
+    result = pipeline.extract_bytes(b"pdf-image-only-bytes", "application/pdf")
+
+    assert result.mime_type == "application/pdf"
+    assert [page.source for page in result.pages] == ["ocr", "ocr"]
+    assert [page.text for page in result.pages] == ["Scanned first\npage", "Scanned second\npage"]
+    assert result.text == "Scanned first\npage\n\f\nScanned second\npage"
+    assert result.diagnostics["ocr_used"] is True
+    assert result.diagnostics["ocr"]["pdf_fallback"] is True
+    assert result.diagnostics["ocr"]["rendered_page_count"] == 2
 
 
 def test_jpeg_ocr_extraction_uses_ocr_confidence_and_metadata() -> None:
