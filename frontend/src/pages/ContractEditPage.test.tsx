@@ -72,6 +72,25 @@ describe("ContractEditPage", () => {
     Object.values(apiMocks).forEach((mockFn) => mockFn.mockReset());
   });
 
+  it("renders safely when the contract response omits files", async () => {
+    apiMocks.getContract.mockResolvedValue({
+      id: "contract-1",
+      name: "Alpha",
+      language: "eng",
+      file_count: 0,
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    });
+
+    renderPage();
+
+    expect(
+      await screen.findByRole("heading", { name: "Files" }),
+    ).toBeVisible();
+    expect(screen.getByText("No files uploaded yet.")).toBeVisible();
+    expect(apiMocks.getDocumentText).not.toHaveBeenCalled();
+  });
+
   it("starts queued automatic guideline checks and shows them in a separate panel below files", async () => {
     window.localStorage.setItem(
       "ldi.guidelineRules",
