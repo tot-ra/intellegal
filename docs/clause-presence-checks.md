@@ -49,12 +49,12 @@ sequenceDiagram
 ```
 
 ### Main files
-- `frontend/src/pages/GuidelineRunPage.tsx`
-- `frontend/src/pages/GuidelinesPage.tsx`
-- `frontend/src/api/client.ts`
-- `go-api/internal/http/handlers/checks.go`
-- `py-ai-api/py_ai_api/analysis.py`
-- `py-ai-api/py_ai_api/main.py`
+- [`frontend/src/pages/GuidelineRunPage.tsx`](../frontend/src/pages/GuidelineRunPage.tsx)
+- [`frontend/src/pages/GuidelinesPage.tsx`](../frontend/src/pages/GuidelinesPage.tsx)
+- [`frontend/src/api/client.ts`](../frontend/src/api/client.ts)
+- [`go-api/internal/http/handlers/checks.go`](../go-api/internal/http/handlers/checks.go)
+- [`py-ai-api/py_ai_api/services/analysis.py`](../py-ai-api/py_ai_api/services/analysis.py)
+- [`py-ai-api/py_ai_api/api/routes/internal.py`](../py-ai-api/py_ai_api/api/routes/internal.py)
 
 ## How matching works
 
@@ -89,9 +89,9 @@ This flow is cyclic: the scorer loops over all chunks in the current document an
 ## Where the lexical check is implemented
 
 - Python entrypoint: `POST /internal/v1/analyze/clause`
-- Route handler: `py-ai-api/py_ai_api/api/routes/internal.py`
-- Core logic: `py-ai-api/py_ai_api/services/analysis.py`
-- Triggered from Go API: `go-api/internal/http/handlers/checks.go`
+- Route handler: [`py-ai-api/py_ai_api/api/routes/internal.py`](../py-ai-api/py_ai_api/api/routes/internal.py)
+- Core logic: [`py-ai-api/py_ai_api/services/analysis.py`](../py-ai-api/py_ai_api/services/analysis.py)
+- Triggered from Go API: [`go-api/internal/http/handlers/checks.go`](../go-api/internal/http/handlers/checks.go)
 
 The Go API accepts the clause-presence request and forwards it to the Python AI service. The Python `AnalysisPipeline.analyze_clause(...)` method performs the actual lexical matching.
 
