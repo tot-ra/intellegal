@@ -58,17 +58,81 @@ sequenceDiagram
 
 ## How matching works
 
+The lexical clause check does not build a graph of entities or clauses. Instead, it runs a simple document-by-document scoring pass over indexed text chunks:
+
+1. Take the user-provided `required_clause_text`
+2. Normalize and tokenize that text
+3. Load indexed chunks for one document
+4. Score each chunk with lexical heuristics
+5. Keep only the best-scoring chunk for that document
+6. Convert that best score into `match`, `review`, or `missing`
+
 ```mermaid
 flowchart TD
-    A["Required clause text"] --> B["Tokenize clause text"]
-    C["Indexed chunks for one document"] --> D["For each chunk"]
-    B --> D
-    D --> E["Token overlap score"]
+    A["required_clause_text"] --> B["Tokenize required clause"]
+    C["Indexed chunks for one document"] --> D{"Next chunk?"}
+    B --> E["Token overlap with chunk tokens"]
     A --> F["Exact phrase containment check"]
-    D --> G["Best score = max(overlap, phrase match)"]
+    D --> E
+    D --> F
+    E --> G["chunk_score = max(token_overlap, phrase_match)"]
     F --> G
-    G --> H["Pick best chunk"]
+    G --> H{"Better than current best?"}
+    H -->|"yes"| I["Store as best chunk + best score"]
+    H -->|"no"| D
+    I --> D
+    D -->|"no chunks left"| J["Classify document from best score"]
 ```
+
+This flow is cyclic: the scorer loops over all chunks in the current document and keeps the best candidate seen so far. Mermaid supports cycles in `flowchart` diagrams, so using a loop here is valid and closer to the actual implementation.
+
+## Where the lexical check is implemented
+
+- Python entrypoint: `POST /internal/v1/analyze/clause`
+- Route handler: `py-ai-api/py_ai_api/api/routes/internal.py`
+- Core logic: `py-ai-api/py_ai_api/services/analysis.py`
+- Triggered from Go API: `go-api/internal/http/handlers/checks.go`
+
+The Go API accepts the clause-presence request and forwards it to the Python AI service. The Python `AnalysisPipeline.analyze_clause(...)` method performs the actual lexical matching.
+
+## Lexical scoring details
+
+```mermaid
+flowchart LR
+    A["Required clause text"] --> B["Lowercase + regex tokenization"]
+    C["Chunk text"] --> D["Lowercase + regex tokenization"]
+    B --> E["Token overlap = matching required tokens / required tokens"]
+    D --> E
+    A --> F["phrase_match = 1.0 if full clause text appears in chunk else 0.0"]
+    C --> F
+    E --> G["score = max(token_overlap, phrase_match)"]
+    F --> G
+```
+
+### What the code does
+
+- `_tokenize(...)` extracts lowercase alphanumeric tokens using the regex `[a-z0-9]+`
+- `_token_overlap(left, right)` computes:
+  `len(required_tokens ∩ chunk_tokens) / len(required_tokens)`
+- Phrase match is binary:
+  `1.0` if the full normalized clause text is contained in the chunk, otherwise `0.0`
+- The final chunk score is:
+  `max(token_overlap, phrase_match)`
+- The document score is the highest chunk score found among the document's indexed chunks
+
+### Why this is called lexical
+
+- It only looks at words present in the text
+- It does not infer clause meaning from a graph or ontology
+- It does not reason across many linked entities
+- It is fast, explainable, and easy to attach to an evidence snippet
+
+### Practical consequence
+
+- Strong exact wording usually scores well
+- Near-verbatim paraphrases can still score via token overlap
+- Heavily reworded clauses may fall into `review` or `missing`
+- Clauses whose meaning is spread across multiple chunks can be missed because scoring is chunk-local
 
 ### Data source
 - Uses indexed chunks, not whole-document text
